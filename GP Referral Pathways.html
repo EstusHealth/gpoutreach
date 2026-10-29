@@ -1,0 +1,414 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>GP Referral Pathways</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Public+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap">
+<style>
+/* Layout: sibling of the Nurture Trainer. Sticky tabs, clock rail timeline, a teaching-aid grid for the GP module. */
+:root{
+  --paper:#EEF2EF; --surface:#FFFFFF; --ink:#16201C; --muted:#56645E; --line:#D3DCD7;
+  --accent:#1E56B8; --accent-soft:#E2EAF8; --on-accent:#FFFFFF;
+  --call:#B9440F; --text:#1E56B8; --email:#6A2BC9; --vm:#0E7468; --warn:#9A5B00; --warn-soft:#FFF1D6; --good:#17784A; --bad:#B42318;
+  --f-display:"Bricolage Grotesque","Segoe UI",system-ui,sans-serif;
+  --f-body:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --paper:#0E1412; --surface:#161F1C; --ink:#E6EEEA; --muted:#94A39C; --line:#2A3632;
+  --accent:#86ADF2; --accent-soft:#1B2A44; --on-accent:#0E1412;
+  --call:#F2A066; --text:#86ADF2; --email:#BFA2F7; --vm:#55CBB8; --warn:#F2C064; --warn-soft:#2E2512; --good:#5BD49A; --bad:#F38B80;
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --paper:#0E1412; --surface:#161F1C; --ink:#E6EEEA; --muted:#94A39C; --line:#2A3632;
+  --accent:#86ADF2; --accent-soft:#1B2A44; --on-accent:#0E1412;
+  --call:#F2A066; --text:#86ADF2; --email:#BFA2F7; --vm:#55CBB8; --warn:#F2C064; --warn-soft:#2E2512; --good:#5BD49A; --bad:#F38B80;
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font:400 16px/1.55 var(--f-body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 64px}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
+.wrap{max-width:980px;margin:0 auto;display:flex;flex-direction:column;gap:28px}
+h1,h2,h3{font-family:var(--f-display);text-wrap:balance;margin:0;line-height:1.1}
+h1{font-size:clamp(2rem,5vw,3.2rem);font-weight:800;letter-spacing:-.02em}
+h2{font-size:clamp(1.4rem,3vw,1.9rem);font-weight:700;letter-spacing:-.01em}
+h3{font-size:1.1rem;font-weight:700}
+p{margin:0;max-width:65ch}
+ul{margin:0;padding-left:1.2em;display:flex;flex-direction:column;gap:6px}
+.eyebrow{font:700 .72rem/1 var(--f-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.muted{color:var(--muted)}
+.lede{font-size:1.08rem;color:var(--muted)} .lede b{color:var(--ink)}
+header.top{display:flex;flex-direction:column;gap:12px}
+nav.tabs{display:flex;gap:4px;flex-wrap:wrap;border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);background:var(--paper);z-index:5;padding-top:6px}
+nav.tabs button{font:600 .95rem var(--f-body);color:var(--muted);background:none;border:0;padding:10px 12px;border-bottom:3px solid transparent;cursor:pointer;margin-bottom:-1px}
+nav.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+button:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+section.view{display:flex;flex-direction:column;gap:22px}
+.sh{display:flex;flex-direction:column;gap:6px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.card .n{font:700 .75rem var(--f-mono);color:var(--accent)}
+.card .swap{font-size:.9rem;border-top:1px dashed var(--line);padding-top:8px;color:var(--muted)} .card .swap b{color:var(--ink)}
+.big{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:20px}
+.big .num{font:800 clamp(2.2rem,6vw,3.2rem)/1 var(--f-display);color:var(--accent);font-variant-numeric:tabular-nums}
+@media (max-width:520px){.big{grid-template-columns:1fr}}
+
+/* ladder */
+.ladder{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.ladder label{display:grid;grid-template-columns:22px 44px 1fr;gap:12px;align-items:start;padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+.ladder label:last-child{border-bottom:0}
+.ladder .lvl{font:700 .8rem var(--f-mono);color:var(--muted);padding-top:2px}
+.ladder input,.check input{width:18px;height:18px;margin-top:3px;accent-color:var(--accent)}
+.ladder .t,.check .t{font-weight:600}
+.ladder .d,.check .d{font-size:.92rem;color:var(--muted)}
+.ladder input:checked ~ span .t,.check input:checked + span .t{text-decoration:line-through;color:var(--muted)}
+.prog{font:700 .8rem var(--f-mono);color:var(--muted)}
+
+/* timeline */
+.tl{display:flex;flex-direction:column}
+.step{display:grid;grid-template-columns:118px 1fr;gap:18px}
+.rail{padding-top:18px;text-align:right}
+.rail .clock{font:700 .85rem/1.2 var(--f-mono)} .rail .when{font:500 .74rem/1.3 var(--f-mono);color:var(--muted);margin-top:2px}
+.step .body{position:relative;border-left:2px solid var(--line);padding:16px 0 26px 22px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.step .body::before{content:"";position:absolute;left:-7px;top:20px;width:12px;height:12px;border-radius:50%;background:var(--surface);border:2px solid var(--accent)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font:700 .7rem/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 8px;border-radius:999px;border:1.5px solid currentColor}
+.chip.call{color:var(--call)}.chip.text{color:var(--text)}.chip.email{color:var(--email)}.chip.vm{color:var(--vm)}
+.why{font-size:.9rem;background:var(--warn-soft);border-radius:8px;padding:10px 12px} .why b{color:var(--warn)}
+@media (max-width:560px){.step{grid-template-columns:1fr;gap:0}.rail{text-align:left;padding-top:8px}.step .body{padding-top:8px}}
+
+/* scripts */
+.script{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.script .lbl{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.script blockquote{margin:0;font-size:.98rem;white-space:pre-wrap;overflow-wrap:anywhere;border-left:3px solid var(--accent-soft);padding-left:12px}
+.copy{font:600 .8rem var(--f-body);border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:6px 10px;cursor:pointer}
+.objs{display:flex;flex-direction:column;gap:8px}
+details{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:0 16px}
+details summary{cursor:pointer;font-weight:600;padding:14px 0;list-style-position:outside}
+details[open] summary{border-bottom:1px dashed var(--line)}
+details .a{padding:12px 0 16px;display:flex;flex-direction:column;gap:8px}
+details .a q{font-style:normal;quotes:none}
+
+/* run sheet */
+.run{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px;overflow:hidden}
+.run .r{display:grid;grid-template-columns:96px 1fr;gap:14px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.run .r:last-child{border-bottom:0}
+.run .m{font:700 .85rem var(--f-mono);font-variant-numeric:tabular-nums;color:var(--accent)}
+.check{display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:12px}
+.check label{display:grid;grid-template-columns:22px 1fr;gap:12px;padding:14px 16px;border-bottom:1px solid var(--line);cursor:pointer}
+.check label:last-child{border-bottom:0}
+
+/* teaching aid */
+.aid-head{background:var(--accent);color:var(--on-accent);border-radius:14px 14px 0 0;padding:22px 22px 18px;display:flex;flex-direction:column;gap:8px}
+.aid-head h2{font-size:clamp(1.6rem,4vw,2.3rem)}
+.aid-head p{opacity:.92}
+.aid{border:1px solid var(--line);border-top:0;border-radius:0 0 14px 14px;background:var(--surface);overflow:hidden}
+.aid .row{display:grid;grid-template-columns:150px 1fr;border-top:1px solid var(--line)}
+.aid .row:first-child{border-top:0}
+.aid .k{background:var(--accent-soft);font:700 .74rem/1.3 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;padding:16px 14px;color:var(--ink)}
+.aid .v{padding:16px 18px;min-width:0}
+@media (max-width:600px){.aid .row{grid-template-columns:1fr}.aid .k{padding:10px 14px}}
+.flags{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}
+.flag{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:var(--paper);font-size:.95rem}
+.flag b{display:block;margin-bottom:2px}
+.case{display:flex;flex-direction:column;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:20px}
+.case .who{font:700 .8rem var(--f-mono);color:var(--muted)}
+.qa{display:flex;flex-direction:column;gap:6px}
+.qa textarea{width:100%;min-height:70px;font:400 .95rem var(--f-body);color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:10px;resize:vertical}
+.reveal{align-self:flex-start;font:600 .85rem var(--f-body);background:none;border:1.5px solid var(--accent);color:var(--accent);border-radius:8px;padding:6px 12px;cursor:pointer}
+.ans{background:var(--accent-soft);border-radius:8px;padding:12px 14px;font-size:.95rem}
+.refer{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px}
+@media (max-width:700px){.refer{grid-template-columns:1fr}}
+.placeholder{background:var(--warn-soft);border-radius:4px;padding:0 4px;font-family:var(--f-mono);font-size:.88em}
+footer{font-size:.85rem;color:var(--muted);border-top:1px solid var(--line);padding-top:16px;display:flex;flex-direction:column;gap:8px}
+footer a{color:var(--accent)}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <span class="eyebrow">Driving on the Spectrum · referrer pathway</span>
+    <h1>GP referral pathways for driver assessment</h1>
+    <p class="lede">GPs <b>already have the problem</b>. Fitness to drive is a hard call for them, and the WA medical form has a box for an OT driving assessment. You aren't selling. You're the <b>easy answer to a form they dread</b>.</p>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Sections">
+    <button role="tab" data-v="idea" aria-selected="true">1. The idea</button>
+    <button role="tab" data-v="path" aria-selected="false">2. The pathway</button>
+    <button role="tab" data-v="scripts" aria-selected="false">3. What to say</button>
+    <button role="tab" data-v="lunch" aria-selected="false">4. Lunch &amp; learn</button>
+    <button role="tab" data-v="module" aria-selected="false">5. GP module</button>
+  </nav>
+
+  <!-- IDEA -->
+  <section class="view" id="v-idea">
+    <div class="big"><div class="num">M107A</div><div><h3>Your door in</h3><p class="muted">WA's Medical Assessment Certificate asks the GP if the patient needs a specialist assessment, and lists an OT assessment (which may include a driving assessment) as an option. Every GP doing driving medicals meets this question. Be the name they write in.</p></div></div>
+
+    <div class="sh"><span class="eyebrow">Borrowed from physios and psychologists</span><h2>Five rules that do most of the work</h2></div>
+    <div class="grid">
+      <div class="card"><span class="n">RULE 1</span><h3>Make referring easy</h3><p>One-page "when to refer" guide, a referral template, fees, how booking works. Physio referral playbooks call these value assets.</p></div>
+      <div class="card"><span class="n">RULE 2</span><h3>Report back, always</h3><p>GPs refer more to clinicians who keep them updated. Fast acknowledgement, then a one-page summary on top of the full report.</p></div>
+      <div class="card"><span class="n">RULE 3</span><h3>Win the whole practice</h3><p>Practice managers decide who gets in. Reception and nurses steer patients. Learn their names too.</p></div>
+      <div class="card"><span class="n">RULE 4</span><h3>Teach, don't pitch</h3><p>Education earns access. A good lunch and learn counts toward GP CPD education hours, so it gives them something they need.</p></div>
+      <div class="card"><span class="n">RULE 5</span><h3>Small and consistent</h3><p>Start with 5 to 10 practices. Quarterly check-ins. Consistency beats frequency.</p></div>
+      <div class="card"><span class="n">YOUR EDGE</span><h3>A niche they can remember</h3><p>"The OT for young neurodivergent drivers and late-diagnosed adults." Specific beats general. They'll remember the one patient you fit.</p></div>
+    </div>
+
+    <div class="sh"><span class="eyebrow">For the nerves</span><h2>Graded exposure, OT style</h2><p class="muted">Start at level 1. Tick each one off. Move up when the current level feels boring. Ticks stay in this browser.</p></div>
+    <div class="ladder" id="ladder"></div>
+  </section>
+
+  <!-- PATH -->
+  <section class="view" id="v-path">
+    <div class="sh"><span class="eyebrow">Per practice</span><h2>The referrer nurture sequence</h2><p class="muted">Same bones as the lead nurture: speed, persistence, value. Slower cadence, because this is a relationship that lasts years.</p></div>
+    <div class="tl" id="timeline"></div>
+  </section>
+
+  <!-- SCRIPTS -->
+  <section class="view" id="v-scripts">
+    <div class="sh"><span class="eyebrow">Read it, copy it, change the brackets</span><h2>What to say</h2><p class="muted">Short is kind. GPs and practice managers are busy. Every script ends with an easy next step.</p></div>
+    <div id="scriptList" style="display:flex;flex-direction:column;gap:14px"></div>
+    <div class="sh"><span class="eyebrow">When they push back</span><h2>Objections, with calm answers</h2></div>
+    <div class="objs" id="objs"></div>
+  </section>
+
+  <!-- LUNCH -->
+  <section class="view" id="v-lunch">
+    <div class="big"><div class="num">30 min</div><div><h3>Fit their day, not yours</h3><p class="muted">Ask to join an existing practice meeting or lunch. Twenty minutes of talk, ten of questions. Bring lunch, leave the kit. Budget $150 to $250 for catering and don't worry about cost per lead.</p></div></div>
+
+    <div class="sh"><span class="eyebrow">Run sheet</span><h2>The 30 minutes</h2></div>
+    <div class="run">
+      <div class="r"><span class="m">00:00</span><div><b>Hello and why you're here.</b> One line on who you are and the patients you see. Thank them for the time.</div></div>
+      <div class="r"><span class="m">02:00</span><div><b>Open with a case.</b> Read Josh's case from the GP module. Ask: "Would you sign him off?" Let them talk. This is the hook.</div></div>
+      <div class="r"><span class="m">07:00</span><div><b>Three domains.</b> Driving needs sensory, cognitive and motor skills. Screening tests alone don't predict on-road safety. That gap is what an OT assessment fills.</div></div>
+      <div class="r"><span class="m">12:00</span><div><b>When to refer.</b> Walk the red flags grid. Stress the reassuring bit: a diagnosis alone does not mean unfit.</div></div>
+      <div class="r"><span class="m">17:00</span><div><b>What happens after referral.</b> Clinic part, on-road part, what the report tells them, how fast it comes back.</div></div>
+      <div class="r"><span class="m">20:00</span><div><b>How to refer.</b> Show the one-pager, the template, fees, NDIS. "Tick the OT box and send it to me."</div></div>
+      <div class="r"><span class="m">22:00</span><div><b>Questions.</b> Ask them: "What makes driving medicals hard for you?" Write it down. That's your next lunch topic.</div></div>
+      <div class="r"><span class="m">29:00</span><div><b>Leave the kit.</b> Attendance sheet for CPD, kit on the table, thank the practice manager by name.</div></div>
+    </div>
+
+    <div class="sh"><span class="eyebrow">Checklist</span><h2>Before you walk in <span class="prog" id="lunchProg"></span></h2></div>
+    <div class="check" id="lunchList"></div>
+  </section>
+
+  <!-- MODULE -->
+  <section class="view" id="v-module">
+    <p class="muted">GP-facing. Present it at a lunch and learn or hand it over as a teaching aid. Same format as the GPSA fitness to drive aid.</p>
+    <div>
+      <div class="aid-head">
+        <span class="eyebrow" style="color:inherit;opacity:.85">GP upskilling · Driving on the Spectrum</span>
+        <h2>When to refer for an OT driving assessment</h2>
+        <p>Neurodivergent learners, late-diagnosed adults and the M107A question you aren't sure how to answer.</p>
+      </div>
+      <div class="aid">
+        <div class="row"><div class="k">Teaching areas</div><div class="v"><ul>
+          <li>What an OT driving assessment is, and what it adds to your clinical assessment</li>
+          <li>Neurodevelopmental conditions and driving: function, not label</li>
+          <li>Red flags that should trigger a referral</li>
+          <li>How to refer in WA, and what comes back to you</li>
+        </ul></div></div>
+        <div class="row"><div class="k">Tips and traps</div><div class="v"><ul>
+          <li><b>A diagnosis is not a verdict.</b> AFTD 2022 states an autism or neurodevelopmental diagnosis does not by itself compel a person to report. Reporting depends on symptoms likely to affect safe driving.</li>
+          <li><b>Assess all three domains:</b> sensory, cognitive and motor.</li>
+          <li><b>Screening tests alone don't predict on-road safety.</b> A composite battery plus an on-road check gives a better picture.</li>
+          <li><b>Self-report is unreliable.</b> Corroborate with a parent, partner or driving instructor.</li>
+          <li><b>Not just pass or fail.</b> An OT assessment can recommend conditions, specialist lessons or vehicle changes so people keep driving safely.</li>
+          <li><b>Older drivers in WA:</b> annual medical from 80 (M108A). You can request a practical driving assessment if unsure.</li>
+        </ul></div></div>
+        <div class="row"><div class="k">Consider referral when</div><div class="v"><div class="flags">
+          <div class="flag"><b>You can't tick fit or unfit</b>You're unsure on the M107A or M108A. That uncertainty is the referral.</div>
+          <div class="flag"><b>Someone is worried</b>Parent, partner, instructor or the patient reports near misses, getting lost, freezing or new fines.</div>
+          <div class="flag"><b>A learner is stuck</b>Lots of logged hours, little progress, high anxiety or overwhelm in traffic.</div>
+          <div class="flag"><b>Change across the domains</b>Vision, attention, processing speed, coordination or strength has shifted.</div>
+          <div class="flag"><b>A new neurological event</b>Stroke, brain injury or a new diagnosis with functional impact.</div>
+          <div class="flag"><b>Conditions might help</b>Daylight only, local area, automatic, or vehicle modifications.</div>
+          <div class="flag"><b>An NDIS driving goal</b>A report helps the participant get lessons or modifications funded.</div>
+          <div class="flag"><b>Not needed</b>A diagnosis alone, with no signs that driving is affected.</div>
+        </div></div></div>
+        <div class="row"><div class="k">How to refer</div><div class="v"><div class="refer">
+          <div><b>Include</b><ul>
+            <li>Reason for referral and your main concern</li>
+            <li>Relevant history and medications</li>
+            <li>Recent vision results</li>
+            <li>Licence status, and any DoT due date</li>
+            <li>Funding: private or NDIS</li>
+          </ul></div>
+          <div><b>Send to</b><p>Driving on the Spectrum<br>Phone <span class="placeholder">[phone]</span><br>Email <span class="placeholder">[email]</span><br>Fax or secure messaging <span class="placeholder">[details]</span></p><p class="muted" style="margin-top:8px">We acknowledge within one business day. You get a one-page summary plus the full report.</p></div>
+        </div></div></div>
+        <div class="row"><div class="k">Resources</div><div class="v"><ul>
+          <li>Austroads, Assessing Fitness to Drive 2022</li>
+          <li>WA Department of Transport, Medical Assessment Certificate (M107A)</li>
+          <li>GPSA teaching aid, Fitness to drive</li>
+        </ul></div></div>
+      </div>
+    </div>
+
+    <div class="sh"><span class="eyebrow">Clinical reasoning challenge</span><h2>Two cases</h2><p class="muted">Type an answer, then reveal ours. Answers stay on this device only.</p></div>
+    <div id="cases" style="display:flex;flex-direction:column;gap:16px"></div>
+  </section>
+
+  <footer>
+    <span>Built for Liam Fagan. General guide only: check current Ahpra advertising rules, AFTD and DoT forms before using with GPs.</span>
+    <span>Sources: <a href="https://www.transport.wa.gov.au/mediaFiles/licensing/LBU_F_DL_M107A_MedicalFitnessToDrive.pdf" target="_blank" rel="noopener">WA M107A</a> · <a href="https://austroads.gov.au/latest-news/assessing-fitness-to-drive-2022-no-changes-to-fitness-to-drive-requirements-for-people-diagnosed-with-autism" target="_blank" rel="noopener">Austroads AFTD 2022 on autism</a> · <a href="https://transport.wa.gov.au/licensing/drivers-licence/renew/seniors-80-over" target="_blank" rel="noopener">WA seniors 80+</a> · <a href="https://insightplus.mja.com.au/2026/31/understanding-cpd-requirements-for-doctors-a-practical-guide" target="_blank" rel="noopener">MJA on CPD hours</a> · <a href="https://www.writeupp.com/blog/a-guide-to-building-a-referral-network-as-a-physiotherapist" target="_blank" rel="noopener">Physio referral networks</a> · <a href="https://www.physicianspractice.com/view/use-lunch-and-learns-develop-referral-relationships" target="_blank" rel="noopener">Lunch and learns</a> · <a href="https://www.adg.com.au/resources/how-practice-managers-shape-pharmas-access-to-gps/" target="_blank" rel="noopener">Practice managers as gatekeepers</a></span>
+  </footer>
+</div>
+
+<script>
+const LADDER = [
+ ["Email your own GP","Tell them what you do. Ask what makes driving medicals hard. Zero stakes, they already know you."],
+ ["Call one practice manager","Ask only: 'Who handles allied health info here, and how do you like to receive it?' Hang up. Done."],
+ ["Drop a kit at reception","Walk in, smile, hand over the kit and a box of something nice for staff. 2 minutes."],
+ ["Book one lunch and learn","Ask to join an existing practice meeting. Use the email script."],
+ ["Run it","30 minutes, run sheet in hand. Open with the case so they do the talking."],
+ ["Call a GP about a shared patient","Real patient, real update. This is where trust is built."],
+ ["Ask a GP to co-present","At a PHN or RACGP event. You now know GPs. Not a fear any more."]
+];
+const STEPS = [
+ {clock:"WEEK 0",when:"Before any contact",title:"Pick 10 practices and get findable",ch:["email"],
+  do:"Choose practices near you with older patients, youth, NDIS families or GPs who list an interest in ADHD or autism. Then make sure GPs can find you when they search: ask WA Primary Health Alliance how a local service gets onto HealthPathways WA, list in the National Health Services Directory, and set up secure messaging if you can.",
+  why:"Most GPs look things up mid-consult. If you aren't where they look, the nicest lunch won't help."},
+ {clock:"WEEK 1",when:"First contact",title:"Call the practice manager, not the GP",ch:["call"],
+  do:"Ask how they like to receive allied health info and whether they have a practice meeting you could join. Offer, don't ask for referrals.",
+  why:"Practice managers are the gatekeepers and screen hard for value. Treat them as partners, not an obstacle."},
+ {clock:"WEEK 1-2",when:"Within days",title:"Drop the referral kit",ch:["vm","email"],
+  do:"In person if you can. Kit: one-page 'when to refer', referral template, fees and NDIS info, patient 'what to expect' handout, your card. Email a PDF copy the same day.",
+  why:"In person = a face to the name. The emailed copy is what gets saved into their system."},
+ {clock:"WEEK 2-4",when:"Booked slot",title:"Lunch and learn",ch:["call"],
+  do:"Thirty minutes at their meeting. Case, red flags, how to refer. Bring lunch and an attendance sheet for CPD. Meet every staff member, not just doctors.",
+  why:"This is the big one. GPs need 12.5 education hours a year, so useful teaching is a real gift."},
+ {clock:"+24 HRS",when:"After the lunch",title:"Thank you, with the slides",ch:["email"],
+  do:"Thank the practice manager by name. Attach the module, the referral template and the attendance list. Answer any question you couldn't on the day.",
+  why:"Same rule as lead nurture: speed. Follow up while they still remember your face."},
+ {clock:"EVERY REFERRAL",when:"Ongoing",title:"Acknowledge, then report back",ch:["email","call"],
+  do:"Acknowledge within one business day. After the assessment, send a one-page summary on top of the full report: bottom line, recommendations, what you need from the GP. Call if it's urgent or the news is hard.",
+  why:"This is the loop that turns one referral into ten. Fast, short, useful reports are the whole game."},
+ {clock:"QUARTERLY",when:"Every 3 months",title:"Small check-in",ch:["email","vm"],
+  do:"Short note: current wait time, one useful tip, any new service (e.g. specialist lessons). Drop in morning tea once or twice a year.",
+  why:"Consistency beats frequency. Stay remembered without being a pest."},
+ {clock:"YEARLY",when:"Review",title:"Count and prune",ch:["email"],
+  do:"Track referrals by practice and GP, how many booked, and time to report. Double down on the practices that refer. Add new ones to replace the quiet ones.",
+  why:"What gets measured gets managed. Your old finance brain is an asset here."}
+];
+const CHN={call:"In person / call",text:"Text",email:"Email",vm:"Drop-in"};
+const SCRIPTS = [
+ {t:"Phone: practice manager, first call",s:`Hi, is this [name], the practice manager? My name's Liam Fagan, I'm a local occupational therapist. I do driving assessments, mostly for young neurodivergent drivers and adults with new diagnoses.
+
+I'm not after anything today. I just wanted to ask how you like to get information from allied health, so I send it the right way.
+
+[listen]
+
+Great, thank you. And do your GPs have a practice meeting or lunch? I run a 30 minute session on when to refer for driving assessments. I bring lunch, and it can count toward their CPD. Happy to send details.`},
+ {t:"Email: booking a lunch and learn",s:`Subject: Free 30 min session for your GPs: fitness to drive
+
+Hi [name],
+
+Thanks for your time on the phone today.
+
+As promised, here's the session I mentioned:
+
+When to refer for an OT driving assessment
+30 minutes, fits a practice meeting or lunch
+Covers neurodivergent learners, late diagnoses and the M107A question GPs often find tricky
+Lunch provided. Attendance record for CPD.
+
+Any Tuesday to Thursday over the next six weeks works for me. Just let me know a date and any dietary needs.
+
+Kind regards,
+Liam Fagan
+Occupational Therapist, Driving on the Spectrum
+[phone] · [email]`},
+ {t:"In the corridor: the 20 second version",s:`I'm Liam, a local OT. I do driving assessments for young neurodivergent drivers and adults with new ADHD or autism diagnoses.
+
+If you're ever unsure whether to sign off a driving medical, tick the OT box and send them to me. I'll get you a clear one-page answer.`},
+ {t:"Email: thank you for a referral",s:`Subject: Referral received: [patient initials], driving assessment
+
+Dear Dr [name],
+
+Thank you for referring [patient name]. We've contacted them and are booking the assessment for [date or "the next two weeks"].
+
+You'll get a one-page summary and the full report within [X] business days of the assessment.
+
+Kind regards,
+Liam Fagan`},
+ {t:"Report cover: one-page summary",s:`Driving assessment summary: [patient name], DOB [date]
+Assessed [date] · Referred by Dr [name]
+
+Bottom line: [e.g. Safe to continue learning. Recommend specialist lessons.]
+
+Key findings
+1. [finding]
+2. [finding]
+3. [finding]
+
+Recommendations
+1. [e.g. 10 specialist lessons focusing on roundabouts and lane changes]
+2. [e.g. Reassess in 6 months]
+
+What we need from you
+[e.g. Please note recommendations on the M107A / no action needed]
+
+Full report attached. Happy to talk: [phone]`}
+];
+const OBJ = [
+ ["\"We don't see reps.\"","\"Totally fair. I'm not a rep, I'm a local OT. Can I just leave a one-page guide for the GPs? No meeting needed.\" Then leave it, and come back with morning tea in a month."],
+ ["\"We already refer to someone for driving.\"","\"Great, that's good for your patients. I'm a backup when wait times are long, and I specialise in young neurodivergent drivers. Mind if I leave my details for those ones?\""],
+ ["\"Is it covered by Medicare?\"","\"Assessments are private or NDIS funded. My fees are on the one-pager so your GPs can answer that first question for the patient.\""],
+ ["\"Our GPs are too busy for a lunch.\"","\"Understood. Could I have 10 minutes at your next practice meeting? Or I can send a short summary they can read in two minutes.\""],
+ ["A GP asks something you don't know","\"Good question, I don't want to guess. I'll check and email you by tomorrow.\" Then do it. That follow-up builds more trust than knowing everything."],
+ ["\"Does autism mean they can't drive?\"","\"No. Austroads says a diagnosis alone doesn't require reporting. It's about whether symptoms affect driving. When that's unclear, that's when I'm useful.\""]
+];
+const LUNCH = [
+ ["Confirm date, time, headcount","Email the practice manager two days before."],
+ ["Order catering","$150 to $250. Simple and fresh, label dietary options. Arrive 10 minutes early."],
+ ["Print 15 referral kits","One-pager, template, fees, patient handout, cards."],
+ ["Attendance sheet","Name, date, topic, duration, your details, for their CPD records."],
+ ["Load the GP module","On your laptop or tablet. Don't rely on their screen."],
+ ["Know the case cold","Practise Josh's case out loud twice."],
+ ["Write down one question to ask them","\"What makes driving medicals hard for you?\""],
+ ["Thank-you email drafted","Send within 24 hours, with slides and template attached."]
+];
+const CASES = [
+ {who:"CASE 1 · Josh, 17",story:`Josh is autistic and has ADHD, on a stimulant. He has had his learner permit for 10 months and logged about 40 hours. His mum says he "freezes" at roundabouts and has had two near misses. He's keen to drive to TAFE. He's an NDIS participant. Mum asks you, "Should he even be driving?"`,
+  qs:[["What key history would you take? (up to 5)","Driving progress and specific incidents (corroborate with mum or instructor). Medication timing relative to driving. Anxiety or overwhelm in traffic. Attention, processing speed and multitasking in daily life. Sleep, vision and any other conditions such as seizures."],
+      ["What would you assess in the office? (up to 3)","Vision. Review medication effects and side effects. Screen attention and executive function concerns, remembering single tests don't predict on-road safety."],
+      ["What are the two most useful next steps?","1. Reassure: a diagnosis alone doesn't stop him learning or require reporting. 2. Refer for an OT driving assessment for recommendations, such as specialist lessons. Suggest adding a driving goal to his NDIS plan so lessons can be funded."]]},
+ {who:"CASE 2 · Priya, 38",story:`Priya was diagnosed with ADHD three months ago. She's a project manager and drives daily. Since starting treatment she feels sharper, but she's read online that she has to tell the Department of Transport and is scared of losing her licence. She asks you what to do.`,
+  qs:[["What do you need to know before answering?","Any crashes, near misses or fines. How attention and fatigue affect her driving now. Medication effects and timing. Sleep. Other conditions or substances. Her own and her partner's view of her driving."],
+      ["What does the guidance say about reporting?","AFTD 2022: a neurodevelopmental diagnosis does not by itself compel reporting. People must report when symptoms are likely to affect safe driving. Function, not label."],
+      ["When would you refer her?","If history raises concerns, or you're unsure. An OT driving assessment gives an objective answer and practical strategies. If there are no concerns, reassure and document the conversation."]]}
+];
+
+const $=s=>document.querySelector(s),$$=s=>[...document.querySelectorAll(s)];
+const store={get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch(e){return d}},set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}};
+const esc=s=>s.replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+
+function checklist(el,items,key,prog,ladder){
+  const done=store.get(key,[]);
+  el.innerHTML=items.map((r,i)=>`<label><input type="checkbox" id="${key}-${i}" data-i="${i}" ${done.includes(i)?"checked":""}>${ladder?`<span class="lvl">L${i+1}</span>`:""}<span><div class="t">${esc(r[0])}</div><div class="d">${esc(r[1])}</div></span></label>`).join("");
+  const upd=()=>{const d=$$(`#${el.id} input`).filter(x=>x.checked).map(x=>+x.dataset.i);store.set(key,d);if(prog)prog.textContent=`${d.length} of ${items.length}`;};
+  el.addEventListener("change",upd); if(prog)prog.textContent=`${done.length} of ${items.length}`;
+}
+checklist($("#ladder"),LADDER,"ladder",null,true);
+checklist($("#lunchList"),LUNCH,"lunch",$("#lunchProg"));
+
+$("#timeline").innerHTML=STEPS.map(st=>`<div class="step"><div class="rail"><div class="clock">${st.clock}</div><div class="when">${st.when}</div></div><div class="body"><h3>${st.title}</h3><div class="chips">${st.ch.map(c=>`<span class="chip ${c}">${CHN[c]}</span>`).join("")}</div><p>${esc(st.do)}</p><p class="why"><b>Why.</b> ${esc(st.why)}</p></div></div>`).join("");
+
+$("#scriptList").innerHTML=SCRIPTS.map((s,i)=>`<div class="script"><div class="lbl"><h3>${esc(s.t)}</h3><button class="copy" data-i="${i}">Copy</button></div><blockquote id="sc-${i}">${esc(s.s)}</blockquote></div>`).join("");
+$("#scriptList").addEventListener("click",async e=>{const b=e.target.closest(".copy");if(!b)return;
+  try{await navigator.clipboard.writeText(SCRIPTS[+b.dataset.i].s);b.textContent="Copied";}
+  catch(err){const r=document.createRange();r.selectNodeContents($("#sc-"+b.dataset.i));const s=getSelection();s.removeAllRanges();s.addRange(r);b.textContent="Selected, press copy";}
+  setTimeout(()=>b.textContent="Copy",1800);});
+$("#objs").innerHTML=OBJ.map(o=>`<details><summary>${esc(o[0])}</summary><div class="a"><p>${esc(o[1])}</p></div></details>`).join("");
+
+const saved=store.get("caseAns",{});
+$("#cases").innerHTML=CASES.map((c,ci)=>`<div class="case"><span class="who">${c.who}</span><p>${esc(c.story)}</p>${c.qs.map((q,qi)=>`<div class="qa"><label for="ca-${ci}-${qi}"><b>Q${qi+1}.</b> ${esc(q[0])}</label><textarea id="ca-${ci}-${qi}" data-k="${ci}-${qi}" placeholder="Your answer">${esc(saved[ci+"-"+qi]||"")}</textarea><button class="reveal" data-k="${ci}-${qi}">Show our answer</button><div class="ans" id="an-${ci}-${qi}" hidden>${esc(q[1])}</div></div>`).join("")}</div>`).join("");
+$("#cases").addEventListener("input",e=>{if(e.target.matches("textarea")){saved[e.target.dataset.k]=e.target.value;store.set("caseAns",saved);}});
+$("#cases").addEventListener("click",e=>{const b=e.target.closest(".reveal");if(!b)return;const a=$("#an-"+b.dataset.k);a.hidden=!a.hidden;b.textContent=a.hidden?"Show our answer":"Hide answer";});
+
+const views=["idea","path","scripts","lunch","module"];
+function go(v){if(!views.includes(v))v="idea";$$("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.v===v));views.forEach(x=>$("#v-"+x).hidden=x!==v);try{history.replaceState(null,"","#"+v)}catch(e){}}
+$$("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{go(b.dataset.v);window.scrollTo({top:0})}));
+go((location.hash||"").slice(1));
+</script>
+
+</body></html>
