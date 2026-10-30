@@ -137,6 +137,7 @@ footer a{color:var(--accent)}
     <button role="tab" data-v="scripts" aria-selected="false">3. What to say</button>
     <button role="tab" data-v="lunch" aria-selected="false">4. Lunch &amp; learn</button>
     <button role="tab" data-v="module" aria-selected="false">5. GP module</button>
+    <button role="tab" data-v="tracker" aria-selected="false">6. Tracker</button>
   </nav>
 
   <!-- IDEA -->
@@ -245,6 +246,12 @@ footer a{color:var(--accent)}
 
     <div class="sh"><span class="eyebrow">Clinical reasoning challenge</span><h2>Two cases</h2><p class="muted">Type an answer, then reveal ours. Answers stay on this device only.</p></div>
     <div id="cases" style="display:flex;flex-direction:column;gap:16px"></div>
+  </section>
+
+  <!-- TRACKER -->
+  <section class="view" id="v-tracker" hidden>
+    <div class="sh"><span class="eyebrow">Live pipeline · Supabase</span><h2>Leads, practices and reports back</h2><p class="muted">Every client lead, every GP practice you're courting, and every report owed to a referring GP. What's due today comes first.</p></div>
+    <div id="tk-host"></div>
   </section>
 
   <footer>
@@ -405,10 +412,528 @@ $("#cases").innerHTML=CASES.map((c,ci)=>`<div class="case"><span class="who">${c
 $("#cases").addEventListener("input",e=>{if(e.target.matches("textarea")){saved[e.target.dataset.k]=e.target.value;store.set("caseAns",saved);}});
 $("#cases").addEventListener("click",e=>{const b=e.target.closest(".reveal");if(!b)return;const a=$("#an-"+b.dataset.k);a.hidden=!a.hidden;b.textContent=a.hidden?"Show our answer":"Hide answer";});
 
-const views=["idea","path","scripts","lunch","module"];
+const views=["idea","path","scripts","lunch","module","tracker"];
 function go(v){if(!views.includes(v))v="idea";$$("nav.tabs button").forEach(b=>b.setAttribute("aria-selected",b.dataset.v===v));views.forEach(x=>$("#v-"+x).hidden=x!==v);try{history.replaceState(null,"","#"+v)}catch(e){}}
 $$("nav.tabs button").forEach(b=>b.addEventListener("click",()=>{go(b.dataset.v);window.scrollTo({top:0})}));
 go((location.hash||"").slice(1));
+</script>
+<script>
+/* Tab 6: Driving OT Pipeline tracker. Lives in a shadow root so its styles and the guide's never collide.
+   Talks to Supabase project "Driving OT Tracker" through the viewer's Supabase connector (artifact mcp capability). */
+(function(){
+"use strict";
+const host = document.getElementById("tk-host");
+if (!host) return;
+const root = host.attachShadow({mode:"open"});
+
+root.innerHTML = `<style>
+:host{
+  display:block;
+  --t-bg:var(--paper); --t-surface:var(--surface); --t-ink:var(--ink); --t-muted:var(--muted); --t-line:var(--line);
+  --t-accent:var(--accent); --t-on-accent:var(--on-accent); --t-accent-soft:var(--accent-soft);
+  --t-good:var(--good); --t-warn:var(--warn); --t-bad:var(--bad); --t-warn-soft:var(--warn-soft);
+  --t-good-soft:color-mix(in srgb,var(--good) 15%,var(--surface));
+  --t-bad-soft:color-mix(in srgb,var(--bad) 14%,var(--surface));
+  --t-chip:color-mix(in srgb,var(--ink) 7%,var(--surface));
+  --t-display:var(--f-display); --t-body:var(--f-body); --t-mono:var(--f-mono);
+  font:400 15px/1.45 var(--t-body); color:var(--t-ink);
+}
+*{box-sizing:border-box}
+button,input,select,textarea{font:inherit;color:inherit}
+[hidden]{display:none!important}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;border-bottom:1px solid var(--t-line)}
+.subtabs{display:flex;gap:2px;overflow-x:auto;min-width:0}
+.st{border:0;background:none;padding:9px 12px 11px;cursor:pointer;font-weight:600;color:var(--t-muted);border-bottom:3px solid transparent;white-space:nowrap;margin-bottom:-1px}
+.st[aria-selected="true"]{color:var(--t-ink);border-bottom-color:var(--t-accent)}
+.st .n{font-family:var(--t-mono);font-size:.72rem;margin-left:6px;padding:1px 6px;border-radius:10px;background:var(--t-chip)}
+.st .n.hot{background:var(--t-bad-soft);color:var(--t-bad)}
+.bar-acts{display:flex;gap:8px;padding-bottom:8px}
+.btn{border:1px solid var(--t-line);background:var(--t-surface);border-radius:8px;padding:7px 12px;cursor:pointer;font-weight:600;font-size:.88rem;line-height:1.2}
+.btn:hover{border-color:var(--t-muted)}
+.btn:focus-visible,.st:focus-visible,.chip:focus-visible,tr.row:focus-visible,.item:focus-visible,.linkish:focus-visible{outline:3px solid var(--t-accent);outline-offset:2px}
+.btn.primary{background:var(--t-accent);color:var(--t-on-accent);border-color:var(--t-accent)}
+.btn.ghost{background:transparent}
+.btn.small{padding:4px 9px;font-size:.8rem}
+.btn.danger{color:var(--t-bad);border-color:var(--t-bad)}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1px;background:var(--t-line);border:1px solid var(--t-line);border-radius:12px;overflow:hidden;margin-block:16px}
+.stat{background:var(--t-surface);padding:12px 14px;min-width:0}
+.stat b{display:block;font:700 1.35rem/1.2 var(--t-mono);font-variant-numeric:tabular-nums}
+.stat span{font-size:.74rem;color:var(--t-muted);text-transform:uppercase;letter-spacing:.06em}
+@media (max-width:640px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px}
+.toolbar .grow{flex:1 1 180px;min-width:0}
+.chip{border:1px solid var(--t-line);background:var(--t-surface);border-radius:20px;padding:5px 12px;cursor:pointer;font-size:.85rem;font-weight:600}
+.chip[aria-pressed="true"]{background:var(--t-ink);color:var(--t-bg);border-color:var(--t-ink)}
+input[type=search],.field input,.field select,.field textarea,.mini input,.mini select{width:100%;border:1px solid var(--t-line);background:var(--t-surface);border-radius:8px;padding:8px 10px}
+.field textarea{min-height:76px;resize:vertical}
+.sec{font:700 .74rem/1 var(--t-mono);text-transform:uppercase;letter-spacing:.1em;color:var(--t-muted);margin:22px 0 8px;display:flex;align-items:center;gap:8px}
+.sec .count{color:var(--t-ink)}
+.list{background:var(--t-surface);border:1px solid var(--t-line);border-radius:12px;overflow:hidden}
+.item{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;padding:11px 14px;border-top:1px solid var(--t-line);align-items:center;cursor:pointer}
+.item:first-child{border-top:0}
+.item:hover{background:var(--t-bg)}
+.item .t{font-weight:600;min-width:0}
+.item .s{color:var(--t-muted);font-size:.86rem;min-width:0;overflow-wrap:anywhere}
+.item .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end;align-items:center}
+@media (max-width:560px){.item{grid-template-columns:minmax(0,1fr)}.item .acts{justify-content:flex-start}}
+.empty{padding:18px 14px;color:var(--t-muted);font-size:.9rem}
+.tablewrap{overflow-x:auto;background:var(--t-surface);border:1px solid var(--t-line);border-radius:12px}
+table{width:100%;border-collapse:collapse;min-width:720px}
+th{text-align:left;font:700 .7rem/1 var(--t-mono);text-transform:uppercase;letter-spacing:.08em;color:var(--t-muted);padding:12px;border-bottom:1px solid var(--t-line);white-space:nowrap}
+td{padding:10px 12px;border-top:1px solid var(--t-line);vertical-align:top}
+tr.row{cursor:pointer}
+tr.row:hover td{background:var(--t-bg)}
+td.num,.mono{font-family:var(--t-mono);font-variant-numeric:tabular-nums;font-size:.84rem}
+td .sub{display:block;color:var(--t-muted);font-size:.82rem}
+.pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.74rem;font-weight:700;white-space:nowrap;background:var(--t-chip);color:var(--t-ink)}
+.pill.go{background:var(--t-good-soft);color:var(--t-good)}
+.pill.warn{background:var(--t-warn-soft);color:var(--t-warn)}
+.pill.bad{background:var(--t-bad-soft);color:var(--t-bad)}
+.pill.lane{background:var(--t-accent-soft);color:var(--t-accent)}
+.due{font:500 .78rem var(--t-mono);white-space:nowrap}
+.due.over{color:var(--t-bad);font-weight:700}
+.due.today{color:var(--t-warn);font-weight:700}
+.scrim{position:fixed;inset:0;background:rgba(10,14,12,.45);z-index:20}
+.panel{position:fixed;top:0;right:0;bottom:0;width:min(560px,100%);background:var(--t-surface);z-index:21;display:flex;flex-direction:column;border-left:1px solid var(--t-line);padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);padding-right:env(safe-area-inset-right,0px)}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:14px 18px;border-bottom:1px solid var(--t-line)}
+.panel-head h3{margin:0;font:700 1.2rem/1.15 var(--t-display);min-width:0;overflow-wrap:anywhere}
+.panel-body{overflow-y:auto;padding:16px 18px 30px;flex:1}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field.full{grid-column:1/-1}
+.field label{font:700 .7rem/1.2 var(--t-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--t-muted)}
+@media (max-width:480px){.grid{grid-template-columns:minmax(0,1fr)}}
+.form-actions{display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap;margin-top:16px}
+.form-actions .r{display:flex;gap:8px}
+.log{margin-top:22px}
+.log h4{margin:0 0 8px;font:700 .72rem/1 var(--t-mono);text-transform:uppercase;letter-spacing:.09em;color:var(--t-muted)}
+.mini{display:grid;grid-template-columns:120px 130px minmax(0,1fr) auto;gap:6px;margin-bottom:10px}
+@media (max-width:520px){.mini{grid-template-columns:1fr 1fr}.mini .sum{grid-column:1/-1}}
+.entry{display:grid;grid-template-columns:72px minmax(0,1fr);gap:10px;padding:8px 0;border-top:1px dashed var(--t-line);font-size:.9rem}
+.entry .when{font:500 .76rem var(--t-mono);color:var(--t-muted)}
+.entry .k{font:700 .68rem var(--t-mono);text-transform:uppercase;letter-spacing:.07em;color:var(--t-muted);margin-right:6px}
+.entry .sub{color:var(--t-muted)}
+.banner{border:1px solid var(--t-line);background:var(--t-surface);border-radius:12px;padding:14px 16px;margin-top:16px}
+.banner.bad{border-color:var(--t-bad);background:var(--t-bad-soft)}
+.banner h3{margin:0 0 4px;font:700 1.05rem var(--t-display)}
+.banner p{margin:0;color:var(--t-muted)}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(18px + env(safe-area-inset-bottom,0px));background:var(--t-ink);color:var(--t-bg);padding:9px 16px;border-radius:8px;font-weight:600;font-size:.9rem;z-index:30}
+.note{font-size:.8rem;color:var(--t-muted);margin:24px 0 0}
+.linkish{background:none;border:0;padding:0;color:var(--t-accent);font-weight:600;cursor:pointer;text-align:left}
+@media (prefers-reduced-motion: no-preference){.panel{animation:slide .18s ease-out}@keyframes slide{from{transform:translateX(24px);opacity:.6}to{transform:none;opacity:1}}}
+</style>
+<div class="bar">
+  <div class="subtabs" role="tablist" id="tabs" aria-label="Tracker views"></div>
+  <div class="bar-acts"><button class="btn" id="btn-refresh" type="button">Refresh</button><button class="btn primary" id="btn-new" type="button">+ New lead</button></div>
+</div>
+<section class="stats" id="stats" aria-label="Pipeline summary"></section>
+<div id="main"><div class="banner"><h3>Tracker not connected yet</h3><p>It connects to Supabase when you open this tab.</p></div></div>
+<p class="note">Data lives in your Supabase project "Driving OT Tracker" (Sydney). This tab reads and writes it through your own Supabase connection, so nobody else can open the records.</p>
+<div class="scrim" id="scrim" hidden></div>
+<aside class="panel" id="panel" hidden aria-modal="true" role="dialog" aria-labelledby="panel-title">
+  <div class="panel-head"><h3 id="panel-title"></h3><button class="btn ghost small" id="panel-close" type="button">Close</button></div>
+  <div class="panel-body" id="panel-body"></div>
+</aside>
+<div class="toast" id="toast" hidden></div>`;
+
+const PROJECT = "xlxqukjktwkcpyjghwqs";
+const SERVER = "Supabase";
+const TOOL = "execute_sql";
+
+const STAGE = {new:"New",contacted:"Contacted",quoted:"Quoted",booked:"Booked",assessed:"Assessed",report_sent:"Report sent",won:"Won",lost:"Lost",nurture:"Nurture"};
+const OPEN_STAGES = ["new","contacted","quoted","booked","assessed","report_sent"];
+const PSTATUS = {cold:"Cold",contacted:"Contacted",engaged:"Engaged",lunch_booked:"Lunch booked",lunch_done:"Lunch done",referring:"Referring",dormant:"Dormant"};
+const SERVICE = {medical_fitness:"Medical fitness to drive",potential_to_drive:"NDIS potential to drive",lessons:"Driving lessons",unsure:"Not sure yet"};
+const SERVICE_SHORT = {medical_fitness:"Fitness to drive",potential_to_drive:"Potential to drive",lessons:"Lessons",unsure:"Unsure"};
+const SERVICE_PRICE = {medical_fitness:1200,potential_to_drive:2400};
+const FUNDING = {ndis_self:"NDIS self-managed",ndis_plan:"NDIS plan-managed",private:"Private",other:"Other",unknown:"Unknown"};
+const SOURCE = {gp:"GP referral",support_coordinator:"Support coordinator",self:"Self",family:"Family",website:"Website",social:"Social media",other_ot:"Another OT",other:"Other"};
+const REPORT = {not_needed:"Not needed",pending:"To send",sent:"Sent",acknowledged:"Acknowledged",chased:"Chased"};
+const INTEREST = {unknown:"Unknown",low:"Low",medium:"Medium",high:"High",champion:"Champion"};
+const KIND = {call:"Call",email:"Email",sms:"SMS",visit:"Drop-in visit",lunch_learn:"Lunch and learn",fax:"Fax",letter:"Letter",meeting:"Meeting",other:"Other"};
+const STAGE_TONE = {new:"lane",contacted:"",quoted:"",booked:"go",assessed:"go",report_sent:"go",won:"go",lost:"bad",nurture:"warn"};
+const PSTATUS_TONE = {cold:"",contacted:"",engaged:"warn",lunch_booked:"lane",lunch_done:"go",referring:"go",dormant:"bad"};
+const REPORT_TONE = {not_needed:"",pending:"lane",sent:"warn",acknowledged:"go",chased:"bad"};
+
+const COLS = {
+  gp_practices:["name","suburb","address","phone","email","fax","practice_manager","status","next_action","next_action_date","notes"],
+  gps:["practice_id","name","email","phone","interest","notes"],
+  leads:["first_name","last_name","phone","email","suburb","age","contact_person","service","funding","source","referring_practice_id","referring_gp_id","stage","value","next_action","next_action_date","assessment_date","gp_report_status","gp_report_sent_on","gp_followup_due","lost_reason","notes"],
+  touchpoints:["happened_on","kind","summary","lead_id","practice_id","gp_id"]
+};
+
+let mcp = null, S = {practices:[],gps:[],leads:[],touchpoints:[]}, loaded = false;
+let view = "today", leadFilter = "active", leadSearch = "", gpSearch = "", busy = false, started = false;
+
+const $ = s => root.querySelector(s);
+const esc = v => String(v == null ? "" : v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const pad = n => String(n).padStart(2,"0");
+function todayISO(off){ const d=new Date(); d.setDate(d.getDate()+(off||0)); return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function addDays(iso,n){ const [y,m,d]=iso.split("-").map(Number); const dt=new Date(y,m-1,d+n); return dt.getFullYear()+"-"+pad(dt.getMonth()+1)+"-"+pad(dt.getDate()); }
+const MONTHS=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+function fmtDate(iso){ if(!iso) return ""; const [y,m,d]=iso.slice(0,10).split("-").map(Number); return d+" "+MONTHS[m-1]+(y!==new Date().getFullYear()?" "+String(y).slice(2):""); }
+function dueHTML(iso){ if(!iso) return '<span class="due">No date</span>'; const t=todayISO(); const cls = iso<t?"over":iso===t?"today":""; const lbl = iso===t?"Today":iso<t?fmtDate(iso)+" · overdue":fmtDate(iso); return '<span class="due '+cls+'">'+esc(lbl)+'</span>'; }
+const money = n => n==null||n===""?"":"$"+Number(n).toLocaleString("en-AU",{maximumFractionDigits:0});
+const pill = (map,tone,k) => '<span class="pill '+(tone[k]||"")+'">'+esc(map[k]||k)+'</span>';
+const leadName = l => [l.first_name,l.last_name].filter(Boolean).join(" ");
+const practice = id => S.practices.find(p=>p.id===id);
+const gp = id => S.gps.find(g=>g.id===id);
+
+/* SQL through the Supabase connector */
+const lit = s => "'" + String(s).replace(/\u0000/g,"").replace(/'/g,"''") + "'";
+function parseRows(r){
+  let p = r && r.payload, s = null;
+  if (Array.isArray(p)) return p;
+  if (typeof p === "string") s = p; else if (p && typeof p.result === "string") s = p.result;
+  if (s == null){
+    const t = (r && r.content || []).find(c => c.type === "text"); s = t ? t.text : "";
+    try { const j = JSON.parse(s); if (Array.isArray(j)) return j; if (j && typeof j.result === "string") s = j.result; } catch(e){}
+  }
+  const m = s.match(/<untrusted-data-[^>]*>\s*([\s\S]*?)\s*<\/untrusted-data-/);
+  return JSON.parse(m ? m[1] : s);
+}
+async function sql(q){ const r = await mcp.callTool(SERVER, TOOL, {project_id: PROJECT, query: q}, {cache:false}); return parseRows(r); }
+function clean(table, obj){ const out = {}; COLS[table].forEach(c => { if (c in obj){ let v = obj[c]; if (v === "" || v === undefined) v = null; out[c] = v; } }); return out; }
+async function save(table, obj, id){
+  const data = clean(table, obj);
+  let cols = Object.keys(data);
+  if (!id) cols = cols.filter(c => data[c] !== null);
+  if (!cols.length) return;
+  const src = "jsonb_populate_record(null::public."+table+", "+lit(JSON.stringify(data))+"::jsonb)";
+  let q;
+  if (id){
+    if (!UUID.test(id)) throw {code:"bad_id", message:"Invalid record id"};
+    q = cols.length === 1
+      ? "update public."+table+" set "+cols[0]+" = (select "+cols[0]+" from "+src+") where id = "+lit(id)+" returning id"
+      : "update public."+table+" set ("+cols.join(",")+") = (select "+cols.join(",")+" from "+src+") where id = "+lit(id)+" returning id";
+  } else q = "insert into public."+table+" ("+cols.join(",")+") select "+cols.join(",")+" from "+src+" returning id";
+  const rows = await sql(q);
+  return rows && rows[0] && rows[0].id;
+}
+async function remove(table, id){ if (!UUID.test(id)) throw {code:"bad_id", message:"Invalid record id"}; await sql("delete from public."+table+" where id = "+lit(id)); }
+const LOAD_Q = "select json_build_object("+
+  "'practices',(select coalesce(json_agg(p order by p.name),'[]'::json) from public.gp_practices p),"+
+  "'gps',(select coalesce(json_agg(g order by g.name),'[]'::json) from public.gps g),"+
+  "'leads',(select coalesce(json_agg(l order by l.created_at desc),'[]'::json) from public.leads l),"+
+  "'touchpoints',(select coalesce(json_agg(t),'[]'::json) from (select * from public.touchpoints order by happened_on desc, created_at desc limit 1500) t)"+
+  ") as data";
+async function load(){
+  try{ const rows = await sql(LOAD_Q); const d = rows[0] && rows[0].data;
+    S = {practices:d.practices||[], gps:d.gps||[], leads:d.leads||[], touchpoints:d.touchpoints||[]}; loaded = true; render(); }
+  catch(e){ showError(e); }
+}
+function errorCopy(e){
+  switch(e && e.code){
+    case "needs_reauth": return ["Supabase needs reconnecting","Reconnect Supabase in claude.ai Settings, Connectors, then press Refresh."];
+    case "server_not_connected": return ["Supabase isn't connected","Add the Supabase connector in claude.ai Settings, Connectors, then press Refresh."];
+    case "selection_required": return ["Choose a Supabase connection","You have more than one Supabase connector. Pick one in the prompt claude.ai shows, then press Refresh."];
+    case "not_in_manifest": case "approval_required": case "consent_required": return ["Supabase access not allowed","This page needs your permission to use Supabase. Press Refresh to be asked again, or allow it in the artifact's Permissions menu."];
+    case "blocked_by_policy": return ["Blocked by your organisation","Your organisation's policy blocks this Supabase tool."];
+    case "server_unavailable": return ["Supabase didn't answer","The project may be waking up. Wait a few seconds and press Refresh."];
+    case "tool_error": return ["Supabase refused the query", String(e.message||"").slice(0,300)];
+    default: return ["Something went wrong", (e && e.message) ? String(e.message).slice(0,300) : "Press Refresh to try again."];
+  }
+}
+function showError(e){ const [h,p] = errorCopy(e); if (!loaded) $("#main").innerHTML = '<div class="banner bad"><h3>'+esc(h)+'</h3><p>'+esc(p)+'</p></div>'; else toast(h+". "+p, 6000); }
+let toastT;
+function toast(msg, ms){ const t=$("#toast"); t.textContent=msg; t.hidden=false; clearTimeout(toastT); toastT=setTimeout(()=>t.hidden=true, ms||2200); }
+async function act(fn, okMsg){
+  if (busy) return; busy = true; document.body.style.cursor="progress";
+  try{ await fn(); if (okMsg) toast(okMsg); await load(); } catch(e){ showError(e); }
+  finally{ busy=false; document.body.style.cursor=""; }
+}
+
+/* derived */
+function due(){
+  const t = todayISO();
+  const leads = S.leads.filter(l => (OPEN_STAGES.includes(l.stage) || l.stage==="nurture") && l.next_action_date && l.next_action_date <= t).sort((a,b)=>a.next_action_date.localeCompare(b.next_action_date));
+  const unplanned = S.leads.filter(l => OPEN_STAGES.includes(l.stage) && !l.next_action_date);
+  const practices = S.practices.filter(p => p.next_action_date && p.next_action_date <= t).sort((a,b)=>a.next_action_date.localeCompare(b.next_action_date));
+  const reports = S.leads.filter(l => l.gp_report_status==="pending" || ((l.gp_report_status==="sent"||l.gp_report_status==="chased") && l.gp_followup_due && l.gp_followup_due <= t));
+  return {leads, unplanned, practices, reports, total: leads.length + practices.length + reports.length};
+}
+function upcoming(){
+  const t=todayISO(), w=todayISO(7);
+  const a = S.leads.filter(l=>(OPEN_STAGES.includes(l.stage)||l.stage==="nurture") && l.next_action_date>t && l.next_action_date<=w).map(l=>({kind:"lead",r:l,d:l.next_action_date}));
+  const b = S.practices.filter(p=>p.next_action_date>t && p.next_action_date<=w).map(p=>({kind:"practice",r:p,d:p.next_action_date}));
+  return a.concat(b).sort((x,y)=>x.d.localeCompare(y.d));
+}
+function lastTouch(field,id){ const t=S.touchpoints.find(x=>x[field]===id); return t?t.happened_on:null; }
+
+/* render */
+function renderTabs(){
+  const d = loaded ? due() : {total:0};
+  const awaiting = S.leads.filter(l=>["pending","sent","chased"].includes(l.gp_report_status)).length;
+  const tabs = [["today","Today",d.total,true],["leads","Leads",S.leads.filter(l=>OPEN_STAGES.includes(l.stage)).length],["gps","GP practices",S.practices.length],["reports","Reports to GPs",awaiting]];
+  $("#tabs").innerHTML = tabs.map(([k,l,n,hot])=>'<button class="st" role="tab" type="button" data-tab="'+k+'" aria-selected="'+(view===k)+'">'+esc(l)+(loaded?'<span class="n'+(hot&&n?" hot":"")+'">'+n+'</span>':"")+'</button>').join("");
+}
+function renderStats(){
+  if (!loaded){ $("#stats").innerHTML=""; $("#stats").hidden=true; return; }
+  $("#stats").hidden=false;
+  const open = S.leads.filter(l=>OPEN_STAGES.includes(l.stage));
+  const pipe = open.reduce((s,l)=>s+(Number(l.value)||SERVICE_PRICE[l.service]||0),0);
+  const d=new Date(), q0iso = d.getFullYear()+"-"+pad(Math.floor(d.getMonth()/3)*3+1)+"-01";
+  const gpRefs = S.leads.filter(l=>l.source==="gp" && l.created_at && l.created_at.slice(0,10)>=q0iso).length;
+  const awaiting = S.leads.filter(l=>l.gp_report_status==="sent"||l.gp_report_status==="chased").length;
+  const cells = [[open.length,"Open leads"],[money(pipe),"Open pipeline"],[gpRefs,"GP referrals this quarter"],[awaiting,"Reports awaiting GP reply"]];
+  $("#stats").innerHTML = cells.map(([b,s])=>'<div class="stat"><b>'+esc(b)+'</b><span>'+esc(s)+'</span></div>').join("");
+}
+function snoozeBtns(table,id){ return '<button class="btn small" type="button" data-snooze="7" data-table="'+table+'" data-id="'+id+'">+1 wk</button><button class="btn small" type="button" data-snooze="14" data-table="'+table+'" data-id="'+id+'">+2 wk</button>'; }
+function listOr(items, emptyMsg){ return '<div class="list">'+(items.length?items.join(""):'<div class="empty">'+esc(emptyMsg)+'</div>')+'</div>'; }
+function itemLead(l, opts){
+  const p = practice(l.referring_practice_id);
+  const sub = [SERVICE_SHORT[l.service], l.source==="gp"&&p?p.name:SOURCE[l.source], l.next_action].filter(Boolean).join(" · ");
+  return '<div class="item" tabindex="0" data-open="lead" data-id="'+l.id+'"><div><div class="t">'+esc(leadName(l))+' '+pill(STAGE,STAGE_TONE,l.stage)+'</div><div class="s">'+esc(sub)+'</div></div><div class="acts">'+dueHTML(l.next_action_date)+(opts&&opts.snooze?snoozeBtns("leads",l.id):"")+'</div></div>';
+}
+function itemPractice(p){
+  const sub = [p.suburb, p.next_action].filter(Boolean).join(" · ");
+  return '<div class="item" tabindex="0" data-open="practice" data-id="'+p.id+'"><div><div class="t">'+esc(p.name)+' '+pill(PSTATUS,PSTATUS_TONE,p.status)+'</div><div class="s">'+esc(sub)+'</div></div><div class="acts">'+dueHTML(p.next_action_date)+snoozeBtns("gp_practices",p.id)+'</div></div>';
+}
+function itemReport(l){
+  const p = practice(l.referring_practice_id), g = gp(l.referring_gp_id);
+  const who = [g&&g.name, p&&p.name].filter(Boolean).join(", ") || "No referring GP set";
+  const st = l.gp_report_status;
+  const line = st==="pending" ? "Report to send" : "Sent "+fmtDate(l.gp_report_sent_on)+", follow up "+fmtDate(l.gp_followup_due);
+  const btns = st==="pending" ? '<button class="btn small primary" type="button" data-report="sent" data-id="'+l.id+'">Mark sent</button>'
+    : '<button class="btn small" type="button" data-report="acknowledged" data-id="'+l.id+'">GP replied</button><button class="btn small" type="button" data-report="chased" data-id="'+l.id+'">Chased</button>';
+  return '<div class="item" tabindex="0" data-open="lead" data-id="'+l.id+'"><div><div class="t">'+esc(leadName(l))+' '+pill(REPORT,REPORT_TONE,st)+'</div><div class="s">'+esc(who+" · "+line)+'</div></div><div class="acts">'+(st==="pending"?"":dueHTML(l.gp_followup_due))+btns+'</div></div>';
+}
+function viewToday(){
+  const d = due(), up = upcoming();
+  let h = '<div class="sec">Leads due <span class="count">'+d.leads.length+'</span></div>'+listOr(d.leads.map(l=>itemLead(l,{snooze:true})),"No lead follow-ups due.");
+  h += '<div class="sec">GP practices to contact <span class="count">'+d.practices.length+'</span></div>'+listOr(d.practices.map(itemPractice),"No practice touchpoints due.");
+  h += '<div class="sec">Reports to GPs <span class="count">'+d.reports.length+'</span></div>'+listOr(d.reports.map(itemReport),"No reports to send or chase.");
+  if (d.unplanned.length) h += '<div class="sec">Open leads with no next step <span class="count">'+d.unplanned.length+'</span></div>'+listOr(d.unplanned.map(l=>itemLead(l)),"");
+  h += '<div class="sec">Next 7 days <span class="count">'+up.length+'</span></div>'+listOr(up.map(x=>x.kind==="lead"?itemLead(x.r):itemPractice(x.r)),"Nothing scheduled this week.");
+  return h;
+}
+function viewLeads(){
+  const groups = {active:["Active",l=>OPEN_STAGES.includes(l.stage)],nurture:["Nurture",l=>l.stage==="nurture"],won:["Won",l=>l.stage==="won"],lost:["Lost",l=>l.stage==="lost"],all:["All",()=>true]};
+  const q = leadSearch.trim().toLowerCase();
+  const rows = S.leads.filter(groups[leadFilter][1]).filter(l=>!q || [leadName(l),l.suburb,l.contact_person,l.notes,(practice(l.referring_practice_id)||{}).name].join(" ").toLowerCase().includes(q));
+  let h = '<div class="toolbar">'+Object.entries(groups).map(([k,[l,f]])=>'<button class="chip" type="button" data-lf="'+k+'" aria-pressed="'+(leadFilter===k)+'">'+esc(l)+' <span class="mono">'+S.leads.filter(f).length+'</span></button>').join("")+
+    '<div class="grow"><input type="search" id="lead-search" placeholder="Search name, suburb, referrer" value="'+esc(leadSearch)+'" aria-label="Search leads"></div></div>';
+  if (!rows.length) return h + listOr([], leadFilter==="active"&&!q ? "No active leads. Add one with + New lead." : "No leads match.");
+  h += '<div class="tablewrap"><table><thead><tr><th>Client</th><th>Service</th><th>Referrer</th><th>Stage</th><th>Next step</th><th class="num">Value</th></tr></thead><tbody>';
+  h += rows.map(l=>{
+    const p = practice(l.referring_practice_id), g = gp(l.referring_gp_id);
+    const ref = l.source==="gp" ? [g&&g.name,p&&p.name].filter(Boolean).join(", ")||"GP (not set)" : (SOURCE[l.source]+(l.contact_person?": "+l.contact_person:""));
+    return '<tr class="row" tabindex="0" data-open="lead" data-id="'+l.id+'"><td><b>'+esc(leadName(l))+'</b><span class="sub">'+esc([l.age?l.age+" yrs":"",l.suburb].filter(Boolean).join(" · "))+'</span></td>'+
+      '<td>'+esc(SERVICE_SHORT[l.service])+'<span class="sub">'+esc(FUNDING[l.funding])+'</span></td><td>'+esc(ref)+'</td><td>'+pill(STAGE,STAGE_TONE,l.stage)+'</td>'+
+      '<td>'+esc(l.next_action||"")+'<span class="sub">'+(l.next_action_date?dueHTML(l.next_action_date):"")+'</span></td><td class="num">'+esc(money(l.value))+'</td></tr>';
+  }).join("");
+  return h + '</tbody></table></div>';
+}
+function viewGPs(){
+  const q = gpSearch.trim().toLowerCase();
+  const rows = S.practices.filter(p=>!q || [p.name,p.suburb,p.practice_manager,p.notes, S.gps.filter(g=>g.practice_id===p.id).map(g=>g.name).join(" ")].join(" ").toLowerCase().includes(q));
+  let h = '<div class="toolbar"><div class="grow"><input type="search" id="gp-search" placeholder="Search practice, suburb, GP" value="'+esc(gpSearch)+'" aria-label="Search GP practices"></div><button class="btn primary" type="button" id="btn-new-practice">+ New practice</button></div>';
+  if (!rows.length) return h + listOr([], q ? "No practices match." : "No GP practices yet. Add the first one you plan to visit.");
+  h += '<div class="tablewrap"><table><thead><tr><th>Practice</th><th>Status</th><th>GPs</th><th class="num">Referrals</th><th>Last touch</th><th>Next step</th></tr></thead><tbody>';
+  h += rows.map(p=>{
+    const gps = S.gps.filter(g=>g.practice_id===p.id), refs = S.leads.filter(l=>l.referring_practice_id===p.id).length, lt = lastTouch("practice_id",p.id);
+    return '<tr class="row" tabindex="0" data-open="practice" data-id="'+p.id+'"><td><b>'+esc(p.name)+'</b><span class="sub">'+esc(p.suburb||"")+'</span></td><td>'+pill(PSTATUS,PSTATUS_TONE,p.status)+'</td>'+
+      '<td>'+esc(gps.map(g=>g.name).join(", ")||"None yet")+'</td><td class="num">'+refs+'</td><td class="mono">'+esc(lt?fmtDate(lt):"Never")+'</td>'+
+      '<td>'+esc(p.next_action||"")+'<span class="sub">'+(p.next_action_date?dueHTML(p.next_action_date):"")+'</span></td></tr>';
+  }).join("");
+  return h + '</tbody></table></div>';
+}
+function viewReports(){
+  const pending = S.leads.filter(l=>l.gp_report_status==="pending");
+  const waiting = S.leads.filter(l=>l.gp_report_status==="sent"||l.gp_report_status==="chased").sort((a,b)=>(a.gp_followup_due||"").localeCompare(b.gp_followup_due||""));
+  const done = S.leads.filter(l=>l.gp_report_status==="acknowledged");
+  return '<div class="sec">To send <span class="count">'+pending.length+'</span></div>'+listOr(pending.map(itemReport),"No reports waiting to go out.")+
+    '<div class="sec">Sent, waiting on GP <span class="count">'+waiting.length+'</span></div>'+listOr(waiting.map(itemReport),"Nothing waiting on a GP.")+
+    '<div class="sec">GP replied <span class="count">'+done.length+'</span></div>'+listOr(done.map(l=>itemLead(l)),"No acknowledged reports yet.");
+}
+function render(){
+  renderTabs(); renderStats();
+  if (!loaded) return;
+  const ae = root.activeElement && root.activeElement.id;
+  $("#main").innerHTML = view==="today"?viewToday():view==="leads"?viewLeads():view==="gps"?viewGPs():viewReports();
+  if (ae==="lead-search"||ae==="gp-search"){ const el=$("#"+ae); if (el){ el.focus(); el.setSelectionRange(el.value.length, el.value.length); } }
+}
+
+/* forms */
+const opt = (map, v) => Object.entries(map).map(([k,l])=>'<option value="'+k+'"'+(k===v?" selected":"")+'>'+esc(l)+'</option>').join("");
+const f = (id,label,html,full) => '<div class="field'+(full?" full":"")+'"><label for="'+id+'">'+esc(label)+'</label>'+html+'</div>';
+const inp = (id,v,type,extra) => '<input id="'+id+'" type="'+(type||"text")+'" value="'+esc(v==null?"":v)+'"'+(extra||"")+'>';
+const sel = (id,map,v) => '<select id="'+id+'">'+opt(map,v)+'</select>';
+const ta = (id,v) => '<textarea id="'+id+'">'+esc(v||"")+'</textarea>';
+const refSel = (id, items, v, labelFn, none) => '<select id="'+id+'"><option value="">'+esc(none)+'</option>'+items.map(i=>'<option value="'+i.id+'"'+(i.id===v?" selected":"")+'>'+esc(labelFn(i))+'</option>').join("")+'</select>';
+
+let panelCtx = null;
+function openPanel(title, html, ctx){
+  panelCtx = ctx; $("#panel-title").textContent = title; $("#panel-body").innerHTML = html;
+  $("#panel").hidden = false; $("#scrim").hidden = false;
+  const first = $("#panel-body input, #panel-body select"); if (first) first.focus();
+}
+function closePanel(){ $("#panel").hidden = true; $("#scrim").hidden = true; panelCtx = null; }
+function logHTML(field, id){
+  const items = S.touchpoints.filter(t=>t[field]===id);
+  return '<div class="log"><h4>Touchpoints</h4><div class="mini">'+
+    '<input id="tp-date" type="date" value="'+todayISO()+'" aria-label="Date"><select id="tp-kind" aria-label="Type">'+opt(KIND,"call")+'</select>'+
+    '<input id="tp-sum" class="sum" type="text" placeholder="What happened" aria-label="Summary"><button class="btn small primary" type="button" id="tp-add">Log</button></div>'+
+    (items.length ? items.map(t=>'<div class="entry"><div class="when">'+esc(fmtDate(t.happened_on))+'</div><div><span class="k">'+esc(KIND[t.kind]||t.kind)+'</span>'+esc(t.summary)+(t.gp_id&&gp(t.gp_id)?' <span class="k">· '+esc(gp(t.gp_id).name)+'</span>':'')+'</div></div>').join("") : '<div class="empty" style="padding-left:0">No touchpoints logged yet.</div>')+'</div>';
+}
+function formActions(isNew, delLabel, addLabel){
+  return '<div class="form-actions">'+(isNew?'<span></span>':'<button class="btn danger" type="button" id="del">'+delLabel+'</button>')+
+    '<div class="r"><button class="btn" type="button" id="cancel">Cancel</button><button class="btn primary" type="button" id="save">'+(isNew?addLabel:"Save")+'</button></div></div>';
+}
+function leadForm(l){
+  l = l || {stage:"new",service:"unsure",funding:"unknown",source:"other",gp_report_status:"not_needed",next_action:"First contact call",next_action_date:todayISO()};
+  const isNew = !l.id;
+  let h = '<div class="grid">'+
+    f("l-first","First name",inp("l-first",l.first_name,"text"," required"))+f("l-last","Last name",inp("l-last",l.last_name))+
+    f("l-phone","Phone",inp("l-phone",l.phone,"tel"))+f("l-email","Email",inp("l-email",l.email,"email"))+
+    f("l-age","Age",inp("l-age",l.age,"number",' min="10" max="110"'))+f("l-suburb","Suburb",inp("l-suburb",l.suburb))+
+    f("l-contact","Contact person (parent, SC)",inp("l-contact",l.contact_person),true)+
+    f("l-service","Service",sel("l-service",SERVICE,l.service))+f("l-funding","Funding",sel("l-funding",FUNDING,l.funding))+
+    f("l-source","Source",sel("l-source",SOURCE,l.source))+f("l-stage","Stage",sel("l-stage",STAGE,l.stage))+
+    f("l-practice","Referring practice",refSel("l-practice",S.practices,l.referring_practice_id,p=>p.name+(p.suburb?" ("+p.suburb+")":""),"None"))+
+    f("l-gp","Referring GP",refSel("l-gp",S.gps,l.referring_gp_id,g=>g.name+(practice(g.practice_id)?" · "+practice(g.practice_id).name:""),"None"))+
+    f("l-next","Next step",inp("l-next",l.next_action),true)+
+    f("l-nextd","Next step date",inp("l-nextd",l.next_action_date,"date"))+f("l-value","Value ($)",inp("l-value",l.value,"number",' min="0" step="50"'))+
+    f("l-assess","Assessment date",inp("l-assess",l.assessment_date,"date"))+f("l-report","Report to GP",sel("l-report",REPORT,l.gp_report_status))+
+    f("l-rsent","Report sent on",inp("l-rsent",l.gp_report_sent_on,"date"))+f("l-rdue","GP follow-up due",inp("l-rdue",l.gp_followup_due,"date"))+
+    f("l-lost","Lost reason",inp("l-lost",l.lost_reason),true)+f("l-notes","Notes",ta("l-notes",l.notes),true)+'</div>'+
+    formActions(isNew,"Delete lead","Add lead");
+  if (!isNew) h += logHTML("lead_id", l.id);
+  openPanel(isNew?"New lead":leadName(l), h, {type:"lead", id:l.id||null});
+  const svc=$("#l-service"), val=$("#l-value"), src=$("#l-source"), rep=$("#l-report");
+  svc.addEventListener("change",()=>{ if (!val.value && SERVICE_PRICE[svc.value]) val.value = SERVICE_PRICE[svc.value]; });
+  src.addEventListener("change",()=>{ if (src.value==="gp" && rep.value==="not_needed") rep.value="pending"; });
+  rep.addEventListener("change",()=>{ if (rep.value==="sent"){ if(!$("#l-rsent").value) $("#l-rsent").value=todayISO(); if(!$("#l-rdue").value) $("#l-rdue").value=todayISO(14);} });
+  $("#l-gp").addEventListener("change",e=>{ const g=gp(e.target.value); if (g && g.practice_id && !$("#l-practice").value) $("#l-practice").value=g.practice_id; });
+}
+function readLead(){
+  const v = id => $(id).value.trim();
+  return {first_name:v("#l-first"), last_name:v("#l-last"), phone:v("#l-phone"), email:v("#l-email"), age:v("#l-age")?Number(v("#l-age")):null, suburb:v("#l-suburb"), contact_person:v("#l-contact"),
+    service:v("#l-service"), funding:v("#l-funding"), source:v("#l-source"), stage:v("#l-stage"), referring_practice_id:v("#l-practice")||null, referring_gp_id:v("#l-gp")||null,
+    next_action:v("#l-next"), next_action_date:v("#l-nextd")||null, value:v("#l-value")?Number(v("#l-value")):null, assessment_date:v("#l-assess")||null,
+    gp_report_status:v("#l-report"), gp_report_sent_on:v("#l-rsent")||null, gp_followup_due:v("#l-rdue")||null, lost_reason:v("#l-lost"), notes:v("#l-notes")};
+}
+function practiceForm(p){
+  p = p || {status:"cold",next_action:"Intro call to practice manager",next_action_date:todayISO()};
+  const isNew = !p.id;
+  let h = '<div class="grid">'+
+    f("p-name","Practice name",inp("p-name",p.name,"text"," required"),true)+
+    f("p-suburb","Suburb",inp("p-suburb",p.suburb))+f("p-status","Status",sel("p-status",PSTATUS,p.status))+
+    f("p-address","Address",inp("p-address",p.address),true)+
+    f("p-phone","Phone",inp("p-phone",p.phone,"tel"))+f("p-fax","Fax",inp("p-fax",p.fax))+
+    f("p-email","Email",inp("p-email",p.email,"email"))+f("p-pm","Practice manager",inp("p-pm",p.practice_manager))+
+    f("p-next","Next step",inp("p-next",p.next_action),true)+f("p-nextd","Next step date",inp("p-nextd",p.next_action_date,"date"))+'<div></div>'+
+    f("p-notes","Notes",ta("p-notes",p.notes),true)+'</div>'+formActions(isNew,"Delete practice","Add practice");
+  if (!isNew){
+    const gps = S.gps.filter(g=>g.practice_id===p.id), refs = S.leads.filter(l=>l.referring_practice_id===p.id);
+    h += '<div class="log"><h4>GPs at this practice</h4>'+(gps.length?gps.map(g=>'<div class="entry"><div class="when">'+esc(INTEREST[g.interest])+'</div><div><button class="linkish" type="button" data-gp="'+g.id+'">'+esc(g.name)+'</button>'+(g.notes?' <span class="sub">'+esc(g.notes)+'</span>':'')+'</div></div>').join(""):'<div class="empty" style="padding-left:0">No GPs added yet.</div>')+
+      '<button class="btn small" type="button" id="add-gp" style="margin-top:6px">+ Add GP</button></div>';
+    h += '<div class="log"><h4>Referred clients</h4>'+(refs.length?refs.map(l=>'<div class="entry"><div class="when">'+esc(fmtDate(l.created_at))+'</div><div><button class="linkish" type="button" data-lead="'+l.id+'">'+esc(leadName(l))+'</button> '+pill(STAGE,STAGE_TONE,l.stage)+'</div></div>').join(""):'<div class="empty" style="padding-left:0">No referrals yet.</div>')+'</div>';
+    h += logHTML("practice_id", p.id);
+  }
+  openPanel(isNew?"New GP practice":p.name, h, {type:"practice", id:p.id||null});
+}
+function readPractice(){
+  const v = id => $(id).value.trim();
+  return {name:v("#p-name"), suburb:v("#p-suburb"), status:v("#p-status"), address:v("#p-address"), phone:v("#p-phone"), fax:v("#p-fax"), email:v("#p-email"),
+    practice_manager:v("#p-pm"), next_action:v("#p-next"), next_action_date:v("#p-nextd")||null, notes:v("#p-notes")};
+}
+function gpForm(g, practiceId){
+  g = g || {interest:"unknown", practice_id:practiceId||null};
+  const isNew = !g.id;
+  const h = '<div class="grid">'+
+    f("g-name","Name",inp("g-name",g.name,"text",' required placeholder="Dr ..."'),true)+
+    f("g-practice","Practice",refSel("g-practice",S.practices,g.practice_id,p=>p.name,"None"))+f("g-interest","Interest in referring",sel("g-interest",INTEREST,g.interest))+
+    f("g-email","Email",inp("g-email",g.email,"email"))+f("g-phone","Phone",inp("g-phone",g.phone,"tel"))+
+    f("g-notes","Notes",ta("g-notes",g.notes),true)+'</div>'+formActions(isNew,"Delete GP","Add GP")+(isNew?"":logHTML("gp_id", g.id));
+  openPanel(isNew?"New GP":g.name, h, {type:"gp", id:g.id||null});
+}
+function readGP(){ const v = id => $(id).value.trim(); return {name:v("#g-name"), practice_id:v("#g-practice")||null, interest:v("#g-interest"), email:v("#g-email"), phone:v("#g-phone"), notes:v("#g-notes")}; }
+
+/* events (scoped to the shadow root) */
+root.addEventListener("click", e => {
+  const t = e.target.closest("button, [data-open]");
+  if (!t) { if (e.target.id==="scrim") closePanel(); return; }
+  if (t.dataset.tab){ view = t.dataset.tab; render(); return; }
+  if (t.dataset.lf){ leadFilter = t.dataset.lf; render(); return; }
+  if (t.dataset.snooze){ e.stopPropagation(); const n=Number(t.dataset.snooze), table=t.dataset.table, id=t.dataset.id;
+    const rec = table==="leads"?S.leads.find(x=>x.id===id):practice(id);
+    const base = rec&&rec.next_action_date&&rec.next_action_date>todayISO()?rec.next_action_date:todayISO();
+    act(()=>save(table,{next_action_date:addDays(base,n)},id),"Moved to "+fmtDate(addDays(base,n))); return; }
+  if (t.dataset.report){ e.stopPropagation(); const id=t.dataset.id, s=t.dataset.report, patch={gp_report_status:s};
+    if (s==="sent"){ patch.gp_report_sent_on=todayISO(); patch.gp_followup_due=todayISO(14); }
+    if (s==="chased"){ patch.gp_followup_due=todayISO(7); }
+    act(async()=>{ await save("leads",patch,id); const l=S.leads.find(x=>x.id===id);
+      await save("touchpoints",{happened_on:todayISO(),kind:s==="chased"?"call":"email",summary:s==="sent"?"Assessment report sent to GP":s==="chased"?"Chased GP about report":"GP acknowledged report",lead_id:id,practice_id:l&&l.referring_practice_id,gp_id:l&&l.referring_gp_id}); },
+      s==="sent"?"Marked sent, follow-up in 2 weeks":s==="chased"?"Logged chase, follow-up in 1 week":"Marked as replied"); return; }
+  if (t.dataset.gp){ gpForm(gp(t.dataset.gp)); return; }
+  if (t.dataset.lead){ leadForm(S.leads.find(x=>x.id===t.dataset.lead)); return; }
+  if (t.dataset.open){ const id=t.dataset.id; if (t.dataset.open==="lead") leadForm(S.leads.find(x=>x.id===id)); else practiceForm(practice(id)); return; }
+  switch(t.id){
+    case "btn-refresh": loaded ? act(async()=>{}, "Refreshed") : start(true); break;
+    case "btn-new": if (loaded) leadForm(); break;
+    case "btn-new-practice": practiceForm(); break;
+    case "panel-close": case "cancel": closePanel(); break;
+    case "add-gp": gpForm(null, panelCtx && panelCtx.id); break;
+    case "save": onSave(); break;
+    case "del": onDelete(t); break;
+    case "tp-add": onLog(); break;
+  }
+});
+root.addEventListener("keydown", e => {
+  if (e.key==="Escape" && !$("#panel").hidden) closePanel();
+  if ((e.key==="Enter"||e.key===" ") && e.target.matches && e.target.matches("[data-open]")){ e.preventDefault(); e.target.click(); }
+});
+root.addEventListener("input", e => {
+  if (e.target.id==="lead-search"){ leadSearch=e.target.value; render(); }
+  if (e.target.id==="gp-search"){ gpSearch=e.target.value; render(); }
+});
+function onSave(){
+  const c = panelCtx; if (!c) return;
+  if (c.type==="lead"){ const d=readLead(); if(!d.first_name){ toast("Add a first name"); $("#l-first").focus(); return; } act(async()=>{ await save("leads",d,c.id); closePanel(); }, c.id?"Lead saved":"Lead added"); }
+  if (c.type==="practice"){ const d=readPractice(); if(!d.name){ toast("Add the practice name"); $("#p-name").focus(); return; } act(async()=>{ await save("gp_practices",d,c.id); closePanel(); }, c.id?"Practice saved":"Practice added"); }
+  if (c.type==="gp"){ const d=readGP(); if(!d.name){ toast("Add the GP's name"); $("#g-name").focus(); return; } act(async()=>{ await save("gps",d,c.id); closePanel(); }, c.id?"GP saved":"GP added"); }
+}
+function onDelete(btn){
+  const c = panelCtx; if (!c || !c.id) return;
+  if (!btn.dataset.armed){ const lbl = btn.textContent; btn.dataset.armed="1"; btn.textContent="Click again to delete"; setTimeout(()=>{ if(btn.isConnected){ delete btn.dataset.armed; btn.textContent=lbl; } },4000); return; }
+  const table = c.type==="lead"?"leads":c.type==="practice"?"gp_practices":"gps";
+  act(async()=>{ await remove(table,c.id); closePanel(); }, "Deleted");
+}
+function onLog(){
+  const c = panelCtx; if (!c || !c.id) return;
+  const summary = $("#tp-sum").value.trim(); if (!summary){ toast("Write what happened"); $("#tp-sum").focus(); return; }
+  const tp = {happened_on:$("#tp-date").value||todayISO(), kind:$("#tp-kind").value, summary};
+  if (c.type==="lead"){ tp.lead_id=c.id; const l=S.leads.find(x=>x.id===c.id); if(l) tp.practice_id=l.referring_practice_id; }
+  if (c.type==="practice") tp.practice_id=c.id;
+  if (c.type==="gp"){ tp.gp_id=c.id; const g=gp(c.id); if(g) tp.practice_id=g.practice_id; }
+  const reopen = c;
+  act(async()=>{ await save("touchpoints",tp); }, "Logged").then(()=>{
+    if (reopen.type==="lead") leadForm(S.leads.find(x=>x.id===reopen.id));
+    else if (reopen.type==="practice") practiceForm(practice(reopen.id));
+    else gpForm(gp(reopen.id));
+  });
+}
+
+/* boot: connect only when tab 6 is first shown */
+async function start(force){
+  if (started && !force) return; started = true;
+  renderTabs();
+  if (!window.claude || typeof window.claude.use !== "function"){
+    $("#main").innerHTML = '<div class="banner"><h3>Open this page in Claude</h3><p>The tracker reads your Supabase data through your Claude connection, so it only works when this page is opened in claude.ai.</p></div>'; return;
+  }
+  if (!mcp) mcp = await window.claude.use("mcp").catch(()=>null);
+  if (!mcp){ $("#main").innerHTML = '<div class="banner"><h3>Supabase connection not available here</h3><p>Open this page in claude.ai, signed in as the account with the Supabase connector.</p></div>'; return; }
+  $("#main").innerHTML = '<div class="banner"><h3>Connecting to Supabase…</h3><p>If Claude asks to let this page use Supabase, choose Allow.</p></div>';
+  load();
+}
+renderTabs(); renderStats();
+const section = document.getElementById("v-tracker");
+const check = () => { if (section && !section.hidden) start(); };
+if (section) new MutationObserver(check).observe(section, {attributes:true, attributeFilter:["hidden"]});
+check();
+})();
 </script>
 
 </body></html>
