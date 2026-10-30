@@ -524,11 +524,11 @@ td .sub{display:block;color:var(--t-muted);font-size:.82rem}
 </style>
 <div class="bar">
   <div class="subtabs" role="tablist" id="tabs" aria-label="Tracker views"></div>
-  <div class="bar-acts"><button class="btn" id="btn-refresh" type="button">Refresh</button><button class="btn primary" id="btn-new" type="button">+ New lead</button></div>
+  <div class="bar-acts"><button class="btn ghost" id="btn-signout" type="button" hidden>Sign out</button><button class="btn" id="btn-refresh" type="button">Refresh</button><button class="btn primary" id="btn-new" type="button">+ New lead</button></div>
 </div>
 <section class="stats" id="stats" aria-label="Pipeline summary"></section>
 <div id="main"><div class="banner"><h3>Tracker not connected yet</h3><p>It connects to Supabase when you open this tab.</p></div></div>
-<p class="note">Data lives in your Supabase project "Driving OT Tracker" (Sydney). This tab reads and writes it through your own Supabase connection, so nobody else can open the records.</p>
+<p class="note" id="tk-note">Data lives in your Supabase project "Driving OT Tracker" (Sydney). Only your login can open the records.</p>
 <div class="scrim" id="scrim" hidden></div>
 <aside class="panel" id="panel" hidden aria-modal="true" role="dialog" aria-labelledby="panel-title">
   <div class="panel-head"><h3 id="panel-title"></h3><button class="btn ghost small" id="panel-close" type="button">Close</button></div>
@@ -539,6 +539,10 @@ td .sub{display:block;color:var(--t-muted);font-size:.82rem}
 const PROJECT = "xlxqukjktwkcpyjghwqs";
 const SERVER = "Supabase";
 const TOOL = "execute_sql";
+const SB_URL = "https://xlxqukjktwkcpyjghwqs.supabase.co";
+const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhseHF1a2prdHdrY3B5amdod3FzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTMzMDE1NzksImV4cCI6MjEwODg3NzU3OX0.LeQONO_lq9obPaZuRP6a3y2NJ4s72RmltASC25XJdAs"; /* public anon key: row level security limits data to allowed emails */
+const SB_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js";
+let mode = null, sb = null, userEmail = null; /* mode: "mcp" inside Claude, "sb" on the website */
 
 const STAGE = {new:"New",contacted:"Contacted",quoted:"Quoted",booked:"Booked",assessed:"Assessed",report_sent:"Report sent",won:"Won",lost:"Lost",nurture:"Nurture"};
 const OPEN_STAGES = ["new","contacted","quoted","booked","assessed","report_sent"];
@@ -595,7 +599,7 @@ function parseRows(r){
 }
 async function sql(q){ const r = await mcp.callTool(SERVER, TOOL, {project_id: PROJECT, query: q}, {cache:false}); return parseRows(r); }
 function clean(table, obj){ const out = {}; COLS[table].forEach(c => { if (c in obj){ let v = obj[c]; if (v === "" || v === undefined) v = null; out[c] = v; } }); return out; }
-async function save(table, obj, id){
+async function saveSQL(table, obj, id){
   const data = clean(table, obj);
   let cols = Object.keys(data);
   if (!id) cols = cols.filter(c => data[c] !== null);
@@ -611,15 +615,37 @@ async function save(table, obj, id){
   const rows = await sql(q);
   return rows && rows[0] && rows[0].id;
 }
-async function remove(table, id){ if (!UUID.test(id)) throw {code:"bad_id", message:"Invalid record id"}; await sql("delete from public."+table+" where id = "+lit(id)); }
+async function removeSQL(table, id){ if (!UUID.test(id)) throw {code:"bad_id", message:"Invalid record id"}; await sql("delete from public."+table+" where id = "+lit(id)); }
 const LOAD_Q = "select json_build_object("+
   "'practices',(select coalesce(json_agg(p order by p.name),'[]'::json) from public.gp_practices p),"+
   "'gps',(select coalesce(json_agg(g order by g.name),'[]'::json) from public.gps g),"+
   "'leads',(select coalesce(json_agg(l order by l.created_at desc),'[]'::json) from public.leads l),"+
   "'touchpoints',(select coalesce(json_agg(t),'[]'::json) from (select * from public.touchpoints order by happened_on desc, created_at desc limit 1500) t)"+
   ") as data";
+function sbErr(r){ if (r && r.error) throw {code:"sb_error", message:r.error.message}; }
+async function loadSB(){
+  const rs = await Promise.all([
+    sb.from("gp_practices").select("*").order("name"),
+    sb.from("gps").select("*").order("name"),
+    sb.from("leads").select("*").order("created_at",{ascending:false}),
+    sb.from("touchpoints").select("*").order("happened_on",{ascending:false}).order("created_at",{ascending:false}).limit(1500)
+  ]);
+  rs.forEach(sbErr);
+  return {practices:rs[0].data, gps:rs[1].data, leads:rs[2].data, touchpoints:rs[3].data};
+}
+async function saveSB(table, obj, id){
+  const data = clean(table, obj);
+  if (!id){ Object.keys(data).forEach(k=>{ if (data[k]===null) delete data[k]; }); const r = await sb.from(table).insert(data).select("id"); sbErr(r); return r.data && r.data[0] && r.data[0].id; }
+  const r = await sb.from(table).update(data).eq("id", id).select("id"); sbErr(r);
+  if (!r.data || !r.data.length) throw {code:"sb_error", message:"Nothing was saved. This login may not have access."};
+  return id;
+}
+async function removeSB(table, id){ const r = await sb.from(table).delete().eq("id", id); sbErr(r); }
+const save = (t,o,id) => mode==="sb" ? saveSB(t,o,id) : saveSQL(t,o,id);
+const remove = (t,id) => mode==="sb" ? removeSB(t,id) : removeSQL(t,id);
+async function fetchAll(){ if (mode==="sb") return loadSB(); const rows = await sql(LOAD_Q); return rows[0] && rows[0].data; }
 async function load(){
-  try{ const rows = await sql(LOAD_Q); const d = rows[0] && rows[0].data;
+  try{ const d = await fetchAll();
     S = {practices:d.practices||[], gps:d.gps||[], leads:d.leads||[], touchpoints:d.touchpoints||[]}; loaded = true; render(); }
   catch(e){ showError(e); }
 }
@@ -871,7 +897,7 @@ root.addEventListener("click", e => {
   if (t.dataset.lead){ leadForm(S.leads.find(x=>x.id===t.dataset.lead)); return; }
   if (t.dataset.open){ const id=t.dataset.id; if (t.dataset.open==="lead") leadForm(S.leads.find(x=>x.id===id)); else practiceForm(practice(id)); return; }
   switch(t.id){
-    case "btn-refresh": loaded ? act(async()=>{}, "Refreshed") : start(true); break;
+    case "btn-refresh": loaded ? act(async()=>{}, "Refreshed") : (mode==="sb" && sb ? sb.auth.getSession().then(r=>r.data&&r.data.session?afterAuth():loginView()) : start(true)); break;
     case "btn-new": if (loaded) leadForm(); break;
     case "btn-new-practice": practiceForm(); break;
     case "panel-close": case "cancel": closePanel(); break;
@@ -879,10 +905,14 @@ root.addEventListener("click", e => {
     case "save": onSave(); break;
     case "del": onDelete(t); break;
     case "tp-add": onLog(); break;
+    case "lg-signin": signIn(); break;
+    case "lg-signup": signUp(); break;
+    case "btn-signout": signOut(); break;
   }
 });
 root.addEventListener("keydown", e => {
   if (e.key==="Escape" && !$("#panel").hidden) closePanel();
+  if (e.key==="Enter" && (e.target.id==="lg-pass"||e.target.id==="lg-email")){ e.preventDefault(); signIn(); return; }
   if ((e.key==="Enter"||e.key===" ") && e.target.matches && e.target.matches("[data-open]")){ e.preventDefault(); e.target.click(); }
 });
 root.addEventListener("input", e => {
@@ -916,13 +946,57 @@ function onLog(){
   });
 }
 
+/* website mode: Supabase email + password sign-in */
+const banner = (h,p,bad) => '<div class="banner'+(bad?" bad":"")+'"><h3>'+esc(h)+'</h3><p>'+esc(p)+'</p></div>';
+function loadScript(src){ return new Promise((res,rej)=>{ if (window.supabase && window.supabase.createClient) return res(); const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+async function startSB(){
+  $("#main").innerHTML = banner("Loading sign-in…","One moment.");
+  try{ await loadScript(SB_JS); }
+  catch(e){ started = false; $("#main").innerHTML = banner("Couldn't load sign-in","Check your internet connection, then press Refresh.",true); return; }
+  if (!sb) sb = window.supabase.createClient(SB_URL, SB_KEY);
+  const r = await sb.auth.getSession();
+  if (r.data && r.data.session) afterAuth(); else loginView();
+}
+function loginView(msg, email){
+  loaded = false; S = {practices:[],gps:[],leads:[],touchpoints:[]}; renderTabs(); renderStats();
+  $("#btn-signout").hidden = true;
+  $("#main").innerHTML = '<div class="banner"><h3>Sign in to the tracker</h3><p>'+esc(msg||"Use the email that has access to the tracker.")+'</p>'+
+    '<div class="grid" style="margin-top:12px">'+f("lg-email","Email",inp("lg-email",email||"","email",' autocomplete="username"'))+f("lg-pass","Password",inp("lg-pass","","password",' autocomplete="current-password"'))+'</div>'+
+    '<div class="form-actions"><button class="btn" type="button" id="lg-signup">Create account</button><button class="btn primary" type="button" id="lg-signin">Sign in</button></div></div>';
+}
+function creds(){ const email=$("#lg-email").value.trim(), password=$("#lg-pass").value; if (!email||!password){ toast("Enter your email and a password"); return null; } return {email,password}; }
+async function signIn(){
+  const c = creds(); if (!c) return;
+  $("#lg-signin").disabled = true;
+  const r = await sb.auth.signInWithPassword(c);
+  if (r.error){ loginView(/confirm/i.test(r.error.message) ? "Your email isn't confirmed yet. Click the link in the confirmation email, then sign in." : r.error.message==="Invalid login credentials" ? "Email or password is wrong. New here? Press Create account." : r.error.message, c.email); return; }
+  afterAuth();
+}
+async function signUp(){
+  const c = creds(); if (!c) return;
+  if (c.password.length < 8){ toast("Use a password of at least 8 characters"); return; }
+  $("#lg-signup").disabled = true;
+  const r = await sb.auth.signUp({email:c.email, password:c.password, options:{emailRedirectTo: location.origin + location.pathname + "#tracker"}});
+  if (r.error){ loginView(r.error.message, c.email); return; }
+  if (r.data && r.data.session) return afterAuth();
+  loginView("Account created. Open the confirmation email from Supabase and click the link. If the page it opens shows an error, that's fine, your account is still confirmed. Then come back and sign in.", c.email);
+}
+async function signOut(){ if (sb) await sb.auth.signOut(); loginView("Signed out."); }
+async function afterAuth(){
+  const u = await sb.auth.getUser(); userEmail = u.data && u.data.user && u.data.user.email;
+  $("#btn-signout").hidden = false;
+  $("#main").innerHTML = banner("Loading your pipeline…","Signed in as "+(userEmail||"you")+".");
+  await load();
+  if (loaded && !S.leads.length && !S.practices.length && !S.gps.length)
+    $("#main").innerHTML = banner("No records visible","Signed in as "+(userEmail||"you")+", but this email isn't on the tracker's allowed list. Ask Claude to give it access, then press Refresh.",true);
+}
+
 /* boot: connect only when tab 6 is first shown */
 async function start(force){
   if (started && !force) return; started = true;
   renderTabs();
-  if (!window.claude || typeof window.claude.use !== "function"){
-    $("#main").innerHTML = '<div class="banner"><h3>Open this page in Claude</h3><p>The tracker reads your Supabase data through your Claude connection, so it only works when this page is opened in claude.ai.</p></div>'; return;
-  }
+  if (!window.claude || typeof window.claude.use !== "function"){ mode = "sb"; return startSB(); }
+  mode = "mcp";
   if (!mcp) mcp = await window.claude.use("mcp").catch(()=>null);
   if (!mcp){ $("#main").innerHTML = '<div class="banner"><h3>Supabase connection not available here</h3><p>Open this page in claude.ai, signed in as the account with the Supabase connector.</p></div>'; return; }
   $("#main").innerHTML = '<div class="banner"><h3>Connecting to Supabase…</h3><p>If Claude asks to let this page use Supabase, choose Allow.</p></div>';
