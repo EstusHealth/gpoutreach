@@ -905,14 +905,12 @@ root.addEventListener("click", e => {
     case "save": onSave(); break;
     case "del": onDelete(t); break;
     case "tp-add": onLog(); break;
-    case "lg-signin": signIn(); break;
-    case "lg-signup": signUp(); break;
+    case "lg-github": signIn(); break;
     case "btn-signout": signOut(); break;
   }
 });
 root.addEventListener("keydown", e => {
   if (e.key==="Escape" && !$("#panel").hidden) closePanel();
-  if (e.key==="Enter" && (e.target.id==="lg-pass"||e.target.id==="lg-email")){ e.preventDefault(); signIn(); return; }
   if ((e.key==="Enter"||e.key===" ") && e.target.matches && e.target.matches("[data-open]")){ e.preventDefault(); e.target.click(); }
 });
 root.addEventListener("input", e => {
@@ -946,40 +944,32 @@ function onLog(){
   });
 }
 
-/* website mode: Supabase email + password sign-in */
+/* website mode: Supabase sign-in with GitHub (PKCE, returns ?code= so the guide's #hash routing can't eat it) */
 const banner = (h,p,bad) => '<div class="banner'+(bad?" bad":"")+'"><h3>'+esc(h)+'</h3><p>'+esc(p)+'</p></div>';
 function loadScript(src){ return new Promise((res,rej)=>{ if (window.supabase && window.supabase.createClient) return res(); const s=document.createElement("script"); s.src=src; s.onload=res; s.onerror=rej; document.head.appendChild(s); }); }
+function cleanUrl(){ try{ const u = new URL(location.href); ["code","error","error_code","error_description","state"].forEach(k=>u.searchParams.delete(k)); history.replaceState(null,"",u.pathname+u.search+(location.hash||"#tracker")); }catch(e){} }
 async function startSB(){
   $("#main").innerHTML = banner("Loading sign-in…","One moment.");
   try{ await loadScript(SB_JS); }
   catch(e){ started = false; $("#main").innerHTML = banner("Couldn't load sign-in","Check your internet connection, then press Refresh.",true); return; }
-  if (!sb) sb = window.supabase.createClient(SB_URL, SB_KEY);
+  const q = new URLSearchParams(location.search);
+  const oauthErr = q.get("error_description") || q.get("error");
+  if (!sb) sb = window.supabase.createClient(SB_URL, SB_KEY, {auth:{flowType:"pkce", detectSessionInUrl:true, persistSession:true}});
   const r = await sb.auth.getSession();
-  if (r.data && r.data.session) afterAuth(); else loginView();
+  cleanUrl();
+  if (r.data && r.data.session) return afterAuth();
+  loginView(oauthErr ? "GitHub sign-in didn't finish: "+oauthErr : null);
 }
-function loginView(msg, email){
+function loginView(msg){
   loaded = false; S = {practices:[],gps:[],leads:[],touchpoints:[]}; renderTabs(); renderStats();
   $("#btn-signout").hidden = true;
-  $("#main").innerHTML = '<div class="banner"><h3>Sign in to the tracker</h3><p>'+esc(msg||"Use the email that has access to the tracker.")+'</p>'+
-    '<div class="grid" style="margin-top:12px">'+f("lg-email","Email",inp("lg-email",email||"","email",' autocomplete="username"'))+f("lg-pass","Password",inp("lg-pass","","password",' autocomplete="current-password"'))+'</div>'+
-    '<div class="form-actions"><button class="btn" type="button" id="lg-signup">Create account</button><button class="btn primary" type="button" id="lg-signin">Sign in</button></div></div>';
+  $("#main").innerHTML = '<div class="banner"><h3>Sign in to the tracker</h3><p>'+esc(msg||"Sign in with the GitHub account that has access.")+'</p>'+
+    '<div class="form-actions" style="justify-content:flex-start"><button class="btn primary" type="button" id="lg-github">Sign in with GitHub</button></div></div>';
 }
-function creds(){ const email=$("#lg-email").value.trim(), password=$("#lg-pass").value; if (!email||!password){ toast("Enter your email and a password"); return null; } return {email,password}; }
 async function signIn(){
-  const c = creds(); if (!c) return;
-  $("#lg-signin").disabled = true;
-  const r = await sb.auth.signInWithPassword(c);
-  if (r.error){ loginView(/confirm/i.test(r.error.message) ? "Your email isn't confirmed yet. Click the link in the confirmation email, then sign in." : r.error.message==="Invalid login credentials" ? "Email or password is wrong. New here? Press Create account." : r.error.message, c.email); return; }
-  afterAuth();
-}
-async function signUp(){
-  const c = creds(); if (!c) return;
-  if (c.password.length < 8){ toast("Use a password of at least 8 characters"); return; }
-  $("#lg-signup").disabled = true;
-  const r = await sb.auth.signUp({email:c.email, password:c.password, options:{emailRedirectTo: location.origin + location.pathname + "#tracker"}});
-  if (r.error){ loginView(r.error.message, c.email); return; }
-  if (r.data && r.data.session) return afterAuth();
-  loginView("Account created. Open the confirmation email from Supabase and click the link. If the page it opens shows an error, that's fine, your account is still confirmed. Then come back and sign in.", c.email);
+  const b = $("#lg-github"); if (b){ b.disabled = true; b.textContent = "Opening GitHub…"; }
+  const r = await sb.auth.signInWithOAuth({provider:"github", options:{redirectTo: location.origin + location.pathname + "#tracker"}});
+  if (r.error) loginView(r.error.message);
 }
 async function signOut(){ if (sb) await sb.auth.signOut(); loginView("Signed out."); }
 async function afterAuth(){
@@ -988,7 +978,7 @@ async function afterAuth(){
   $("#main").innerHTML = banner("Loading your pipeline…","Signed in as "+(userEmail||"you")+".");
   await load();
   if (loaded && !S.leads.length && !S.practices.length && !S.gps.length)
-    $("#main").innerHTML = banner("No records visible","Signed in as "+(userEmail||"you")+", but this email isn't on the tracker's allowed list. Ask Claude to give it access, then press Refresh.",true);
+    $("#main").innerHTML = banner("No records visible","Signed in as "+(userEmail||"you")+", but that GitHub email isn't on the tracker's allowed list. Ask Claude to give it access, then press Refresh.",true);
 }
 
 /* boot: connect only when tab 6 is first shown */
@@ -1004,6 +994,7 @@ async function start(force){
 }
 renderTabs(); renderStats();
 const section = document.getElementById("v-tracker");
+if (/[?&](code|error)=/.test(location.search) && !(window.claude && window.claude.use)){ const tb = document.querySelector('nav.tabs button[data-v="tracker"]'); if (tb) tb.click(); }
 const check = () => { if (section && !section.hidden) start(); };
 if (section) new MutationObserver(check).observe(section, {attributes:true, attributeFilter:["hidden"]});
 check();
